@@ -1,30 +1,88 @@
+/* ====== Tema base ====== */
 :root{
-  --bg:#0b0f14; --card:#111824; --text:#e7edf5; --muted:#99a7b5; --accent:#8A0F4F; /* Marsala */
-  --ok:#3fb27f; --warn:#f2b950; --err:#e26666;
+  --marsala:#8A0F4F;
+  --bg1:#121521; --bg2:#7a4391; --bg3:#b6192e; --bg4:#ffc1ac;
+  --panel:#4a4a4a;         /* cinza dos cards do seu layout */
+  --panel-700:#3f3f3f;
+  --text:#ffffff; --muted:#e3e3e3;
+  --ok:#3fb27f; --warn:#f2b950; --err:#ff4d4d; --critical:#e52b2b;
+  --ring: #c60064;         /* contornos e barras */
 }
-*{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font:14px/1.4 Inter,system-ui,Arial}
 
-#sidebar{position:fixed;left:0;top:0;bottom:0;width:240px;background:#0e1520;border-right:1px solid #152133;padding:16px;overflow:auto}
-#app{margin-left:240px;padding:20px;min-height:100dvh}
-@media (max-width: 900px){ #sidebar{position:static;width:auto;border:none} #app{margin:0} }
+/* ====== Fonte Mokoto (local) ====== */
+/* Se você renomeou o arquivo para MokotoDemo.ttf: */
+@font-face{
+  font-family:'Mokoto';
+  src:url('/assets/fonts/MokotoDemo.ttf') format('truetype');
+  font-weight:400; font-style:normal; font-display:swap;
+}
+/* Caso prefira manter “Mokoto Demo.ttf”, troque a linha acima por:
+   src:url('/assets/fonts/Mokoto%20Demo.ttf') format('truetype'); */
 
-.nav-brand{font-weight:700;margin-bottom:12px;color:var(--accent)}
-.nav a{display:block;padding:10px 12px;border-radius:10px;color:var(--text);text-decoration:none}
-.nav a.active,.nav a:hover{background:#182235}
+*{box-sizing:border-box}
+html,body,#root{height:100%}
+body{
+  margin:0; color:var(--text); font:16px/1.4 Inter, system-ui, Arial;
+  background: linear-gradient(225deg, var(--bg1), var(--bg2), var(--bg3), var(--bg4));
+  background-attachment: fixed;
+}
 
-.grid{display:grid;gap:16px}
-.grid.kpi{grid-template-columns:repeat(4,1fr)}
-@media (max-width:1200px){ .grid.kpi{grid-template-columns:repeat(2,1fr)} }
-@media (max-width:600px){ .grid.kpi{grid-template-columns:1fr} }
+/* ====== Utilitários ====== */
+.container{max-width:1200px;margin-inline:auto;padding:24px}
+.card{background:var(--panel); border:1px solid rgba(255,255,255,.08); border-radius:20px; padding:18px; box-shadow:0 10px 30px rgba(0,0,0,.25)}
+.btn{display:inline-block; padding:14px 28px; border-radius:999px; border:none; background:#80003c; color:#fff; font-weight:700; letter-spacing:2px; text-transform:uppercase; cursor:pointer}
+.btn:disabled{opacity:.6; cursor:not-allowed}
+.input{width:100%; padding:16px 20px; border-radius:999px; border:none; outline:3px solid transparent}
+.input:focus{outline-color:var(--ring); background:#fff}
+.label{display:block; margin:10px 0 6px 10px; font-weight:700}
 
-.card{background:var(--card);border:1px solid #1d2a3b;border-radius:16px;padding:16px;box-shadow:0 10px 30px rgba(0,0,0,.25)}
-.card h3{margin:0 0 8px 0;font-size:14px;color:var(--muted)}
-.kpi{font-size:28px;font-weight:700}
+/* ====== Logo Predictas (fonte Mokoto) ====== */
+.brand{font-family:'Mokoto', Inter, system-ui, sans-serif; letter-spacing:3px}
 
+/* ====== Barra superior ====== */
+.topbar{
+  position:sticky; top:0; z-index:30;
+  backdrop-filter: blur(6px);
+  background: linear-gradient(225deg, rgba(139,0,71,.85), rgba(139,0,71,.55));
+  border-bottom:1px solid rgba(255,255,255,.12);
+}
+.topbar-inner{display:flex; align-items:center; gap:18px; padding:10px 20px}
+.search{flex:1; display:flex; align-items:center; background:rgba(255,255,255,.1); border-radius:999px; padding:8px 14px; border:1px solid rgba(255,255,255,.25)}
+.search input{flex:1; background:transparent; border:none; outline:none; color:var(--text)}
+.icon-row{display:flex; align-items:center; gap:16px}
+.icon{width:28px;height:28px; display:inline-grid;place-items:center; border-radius:8px; background:rgba(255,255,255,.08)}
+
+/* ====== Grid Dashboard ====== */
+.grid{display:grid; gap:18px}
+.grid.kpi{grid-template-columns:repeat(3,1fr)}
+@media (max-width: 960px){ .grid.kpi{grid-template-columns:1fr} }
+.grid.main{grid-template-columns: 1.2fr 1fr; align-items:start}
+@media (max-width: 1200px){ .grid.main{grid-template-columns:1fr} }
+.kpi-value{font-size:48px; font-weight:800}
+.kpi-sub{color:#a6e3a1; font-weight:800}
+
+/* ====== Tabela ====== */
 .table-wrap{overflow:auto}
-table{width:100%;border-collapse:collapse}
-th,td{padding:10px;border-bottom:1px solid #1d2a3b;text-align:left;white-space:nowrap}
-.badge{padding:2px 8px;border-radius:999px;font-size:12px}
-.badge.ok{background:rgba(63,178,127,.2);color:var(--ok)}
-.badge.warn{background:rgba(242,185,80,.2);color:var(--warn)}
-.badge.err{background:rgba(226,102,102,.2);color:var(--err)}
+table{width:100%; border-collapse:collapse}
+th,td{padding:12px 10px; border-bottom:1px solid rgba(255,255,255,.12); white-space:nowrap}
+.badge{padding:3px 10px; border-radius:999px; font-weight:700}
+.badge.ok{background:rgba(63,178,127,.25)}
+.badge.warn{background:rgba(242,185,80,.25)}
+.badge.err{background:rgba(255,77,77,.25)}
+
+/* ====== Login ====== */
+.center{min-height:100%; display:grid; place-items:center; padding:24px}
+.login-box{width:min(820px,92vw); text-align:center}
+.login-title{font-size:56px; margin-bottom:24px; font-family:'Mokoto',Inter,sans-serif}
+.login-form{display:grid; gap:18px; margin-top:16px}
+.login-form .btn{background:linear-gradient(180deg, #8a0042, #7a003a)}
+.link{color:#fff; opacity:.9}
+.link:hover{text-decoration:underline}
+
+/* ====== Detalhe do motor ====== */
+.critical-bar{height:22px; border-radius:12px; background:var(--critical); display:grid; place-items:center; font-weight:800; letter-spacing:2px; margin-bottom:14px}
+.kpi-cards{display:grid; gap:14px; grid-template-columns:repeat(3,1fr)}
+@media (max-width: 900px){ .kpi-cards{grid-template-columns:1fr} }
+.tabs{display:flex; gap:8px; background:var(--panel-700); border-radius:16px; padding:6px}
+.tab{padding:10px 16px; border-radius:12px; background:transparent; border:1px solid transparent; cursor:pointer}
+.tab.active{background:#5a5a5a; border-color:rgba(255,255,255,.18)}

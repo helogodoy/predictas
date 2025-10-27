@@ -1,25 +1,22 @@
-import { renderSidebar } from "./components/sidebar";
+import { Login } from "./pages/login";
+import { Forgot } from "./pages/forgot";
 import { Dashboard } from "./pages/dashboard";
-import { Motores } from "./pages/motores";
-import { Leituras } from "./pages/leituras";
-import { Alertas } from "./pages/alertas";
+import { MotorDetail } from "./pages/motor";
+import { Profile } from "./pages/profile";
 
-type Page = () => Promise<string>;
-
-const routes:Record<string, Page> = {
-  "": Dashboard,
-  "#/dashboard": Dashboard,
-  "#/motores": Motores,
-  "#/leituras": Leituras,
-  "#/alertas": Alertas,
-};
+function mount(html:string){ (document.getElementById("root")!).innerHTML = html; }
 
 async function render(){
-  const hash = location.hash || "#/dashboard";
-  (document.getElementById("sidebar")!).innerHTML = renderSidebar(hash.replace("#/",""));
-  const page = routes[hash] || Dashboard;
-  (document.getElementById("app")!).innerHTML = await page();
+  const hash = location.hash || "#/login";
+  if(hash.startsWith("#/login")) return mount(Login());
+  if(hash.startsWith("#/forgot")) return mount(Forgot());
+  if(hash.startsWith("#/dashboard")) return mount(Dashboard());
+  if(hash.startsWith("#/motor/")){
+    const id = Number(hash.split("/").pop());
+    return mount(MotorDetail(id||1));
+  }
+  if(hash.startsWith("#/profile")) return mount(Profile());
+  return mount(Dashboard());
 }
-
 window.addEventListener("hashchange", render);
 render();
