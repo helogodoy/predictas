@@ -3,6 +3,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/server.ts",
+    "dev:nodemon": "nodemon --ext ts --watch ./ --exec ts-node ./server.ts",
     "start": "node dist/server.js",
     "build": "tsc"
   },
@@ -16,8 +17,11 @@
     "mysql2": "^3.11.0"
   },
   "devDependencies": {
+    "@types/cors": "^2.8.19",
     "@types/express": "^4.17.21",
     "@types/node": "^20.14.10",
+    "nodemon": "^2.0.22",
+    "ts-node": "^10.9.1",
     "tsx": "^4.19.2",
     "typescript": "^5.6.3"
   }
