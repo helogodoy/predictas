@@ -1,0 +1,30 @@
+:root{
+  --bg:#0b0f14; --card:#111824; --text:#e7edf5; --muted:#99a7b5; --accent:#8A0F4F; /* Marsala */
+  --ok:#3fb27f; --warn:#f2b950; --err:#e26666;
+}
+*{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font:14px/1.4 Inter,system-ui,Arial}
+
+#sidebar{position:fixed;left:0;top:0;bottom:0;width:240px;background:#0e1520;border-right:1px solid #152133;padding:16px;overflow:auto}
+#app{margin-left:240px;padding:20px;min-height:100dvh}
+@media (max-width: 900px){ #sidebar{position:static;width:auto;border:none} #app{margin:0} }
+
+.nav-brand{font-weight:700;margin-bottom:12px;color:var(--accent)}
+.nav a{display:block;padding:10px 12px;border-radius:10px;color:var(--text);text-decoration:none}
+.nav a.active,.nav a:hover{background:#182235}
+
+.grid{display:grid;gap:16px}
+.grid.kpi{grid-template-columns:repeat(4,1fr)}
+@media (max-width:1200px){ .grid.kpi{grid-template-columns:repeat(2,1fr)} }
+@media (max-width:600px){ .grid.kpi{grid-template-columns:1fr} }
+
+.card{background:var(--card);border:1px solid #1d2a3b;border-radius:16px;padding:16px;box-shadow:0 10px 30px rgba(0,0,0,.25)}
+.card h3{margin:0 0 8px 0;font-size:14px;color:var(--muted)}
+.kpi{font-size:28px;font-weight:700}
+
+.table-wrap{overflow:auto}
+table{width:100%;border-collapse:collapse}
+th,td{padding:10px;border-bottom:1px solid #1d2a3b;text-align:left;white-space:nowrap}
+.badge{padding:2px 8px;border-radius:999px;font-size:12px}
+.badge.ok{background:rgba(63,178,127,.2);color:var(--ok)}
+.badge.warn{background:rgba(242,185,80,.2);color:var(--warn)}
+.badge.err{background:rgba(226,102,102,.2);color:var(--err)}
