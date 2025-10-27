@@ -11,6 +11,7 @@ export async function Alertas(){
           <tbody>
             ${alertas.map(a=>`
               <tr>
+              <br>
                 <td>${a.id}</td>
                 <td>${a.motorId}</td>
                 <td>${a.tipo}</td>
