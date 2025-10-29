@@ -4,9 +4,13 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
+    "db:reset": "node ./scripts/run-sql.js ./database/reset.sql && node ./scripts/run-sql.js ./database/predictas.sql",
+    "db:init": "node ./scripts/run-sql.js ./database/predictas.sql",
+    "db:trigger": "node ./scripts/run-sql.js ./database/add-trigger.sql",
     "dev": "node server.js",
     "start": "node server.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "db:seed": "node ./scripts/run-sql.js ./database/test-seed.sql",
+    "db:ping": "node ./scripts/ping-db.js"
   },
   "keywords": [],
   "author": "",
@@ -16,6 +20,7 @@
     "bcryptjs": "^3.0.2",
     "better-sqlite3": "^12.4.1",
     "dotenv": "^17.2.3",
-    "express": "^5.1.0"
+    "express": "^5.1.0",
+    "mysql2": "^3.15.3"
   }
 }
