@@ -1,0 +1,5 @@
+-- init.sql (neutralized)
+-- Historically this file created a MySQL database and many tables. The project has
+-- been migrated to use a local SQLite file (`predictas.sqlite` in the backend folder)
+-- and the MySQL-specific initialization is no longer required. Keep this file only for
+-- reference.

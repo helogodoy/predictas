@@ -55,27 +55,44 @@ export function Dashboard(){
 
   // pós-render
   setTimeout(async ()=>{
-    const $ = (id:string)=>document.getElementById(id)!;
+    const $ = (id:string) => document.getElementById(id);
 
-    // Chart.js
-    // @ts-ignore
-    const tempChart = new Chart($("#chartTemp") as HTMLCanvasElement, {
-      type:"line",
-      data:{ labels:[], datasets:[{label:"Temperatura", data:[], tension:.3, borderWidth:2}] },
-      options:{ responsive:true, maintainAspectRatio:false }
-    });
-    // @ts-ignore
-    const vibChart = new Chart($("#chartVib") as HTMLCanvasElement, {
-      type:"line",
-      data:{ labels:[], datasets:[{label:"Vibração", data:[], tension:.3, borderWidth:2}] },
-      options:{ responsive:true, maintainAspectRatio:false }
-    });
+    // helper to safely set textContent
+    const setText = (id:string, text:string) => { const el = $(id); if(el) el.textContent = text; };
+
+    // Chart.js - create charts only if canvas elements exist
+    let tempChart: any = null;
+    let vibChart: any = null;
+    const tempCanvas = $("chartTemp") as HTMLCanvasElement | null;
+    const vibCanvas = $("chartVib") as HTMLCanvasElement | null;
+
+    if (tempCanvas) {
+      // @ts-ignore
+      tempChart = new Chart(tempCanvas, {
+        type: "line",
+        data: { labels: [], datasets: [{ label: "Temperatura", data: [], tension: .3, borderWidth: 2 }] },
+        options: { responsive: true, maintainAspectRatio: false }
+      });
+    } else {
+      console.warn('chartTemp canvas not found');
+    }
+
+    if (vibCanvas) {
+      // @ts-ignore
+      vibChart = new Chart(vibCanvas, {
+        type: "line",
+        data: { labels: [], datasets: [{ label: "Vibração", data: [], tension: .3, borderWidth: 2 }] },
+        options: { responsive: true, maintainAspectRatio: false }
+      });
+    } else {
+      console.warn('chartVib canvas not found');
+    }
 
     // Polling (5s). Quando tiver SSE, trocamos fácil.
     stopFns.push(poll(api.status, 5000, s=>{
-      $("#k-online").textContent=String(s.online);
-      $("#k-offline").textContent=String(s.offline);
-      $("#k-alerta").textContent=String(s.alerta);
+      setText("k-online", String(s.online));
+      setText("k-offline", String(s.offline));
+      setText("k-alerta", String(s.alerta));
     }));
 
     stopFns.push(poll(()=>api.ultimosAlertas(), 5000, rows=>{
@@ -87,7 +104,7 @@ export function Dashboard(){
           <td><span class="badge ${sev}">${r.severidade[0].toUpperCase()+r.severidade.slice(1)}</span></td>
         </tr>`;
       }).join("");
-      $("#tb-alertas").innerHTML = html || `<tr><td colspan="3">Sem alertas</td></tr>`;
+  const tb = $("tb-alertas"); if(tb) tb.innerHTML = html || `<tr><td colspan="3">Sem alertas</td></tr>`;
     }));
 
     async function loadSerie(){
@@ -98,24 +115,27 @@ export function Dashboard(){
       const labels = t.map(x=>new Date(x.ts).toLocaleTimeString().slice(0,5));
       const tvals  = t.map(x=>x.valor);
       const vvals  = v.map(x=>x.valor);
-      tempChart.data.labels = labels; tempChart.data.datasets[0].data = tvals; tempChart.update();
-      vibChart.data.labels  = labels; vibChart.data.datasets[0].data = vvals; vibChart.update();
+  if (tempChart) { tempChart.data.labels = labels; tempChart.data.datasets[0].data = tvals; tempChart.update(); }
+  if (vibChart) { vibChart.data.labels  = labels; vibChart.data.datasets[0].data = vvals; vibChart.update(); }
 
       const media = tvals.length? (tvals.reduce((a,b)=>a+b,0)/tvals.length) : 0;
-      $("#temp-media").textContent = (media?media.toFixed(1):"--")+" °C";
+  setText("temp-media", (media?media.toFixed(1):"--")+" °C");
     }
     await loadSerie();
     stopFns.push(poll(loadSerie, 5000, ()=>{}));
 
     const motores = await api.motores().catch(()=>[]);
-    $("#tb-motores").innerHTML = motores.map(m=>{
-      const statusClass = m.status==="ALERTA" ? "warn" : m.status==="OFFLINE" ? "err" : "ok";
-      return `<tr>
-        <td>${m.id}</td><td>${m.nome}</td><td>${m.localizacao||"-"}</td>
-        <td><span class="badge ${statusClass}">${m.status||"ONLINE"}</span></td>
-        <td><a class="link" href="#/motor/${m.id}">Abrir</a></td>
-      </tr>`;
-    }).join("");
+    const tbMotores = $("tb-motores");
+    if (tbMotores) {
+      tbMotores.innerHTML = motores.map(m=>{
+        const statusClass = m.status==="ALERTA" ? "warn" : m.status==="OFFLINE" ? "err" : "ok";
+        return `<tr>
+          <td>${m.id}</td><td>${m.nome}</td><td>${m.localizacao||"-"}</td>
+          <td><span class="badge ${statusClass}">${m.status||"ONLINE"}</span></td>
+          <td><a class="link" href="#/motor/${m.id}">Abrir</a></td>
+        </tr>`;
+      }).join("");
+    }
   },0);
 
   return main;
