@@ -9,21 +9,17 @@
   --ring: #c60064;         /* contornos e barras */
 }
 
-/* ====== Fonte Mokoto (local) ====== */
-/* Se você renomeou o arquivo para MokotoDemo.ttf: */
 @font-face{
   font-family:'Mokoto';
   src:url('/assets/fonts/MokotoDemo.ttf') format('truetype');
   font-weight:400; font-style:normal; font-display:swap;
 }
-/* Caso prefira manter “Mokoto Demo.ttf”, troque a linha acima por:
-   src:url('/assets/fonts/Mokoto%20Demo.ttf') format('truetype'); */
 
 *{box-sizing:border-box}
 html,body,#root{height:100%}
 body{
   margin:0; color:var(--text); font:16px/1.4 Inter, system-ui, Arial;
-  background: linear-gradient(225deg, var(--bg1), var(--bg2), var(--bg3), var(--bg4));
+  background: linear-gradient(225deg, var(--bg4), var(--bg3), var(--bg2), var(--bg1));
   background-attachment: fixed;
 }
 
@@ -34,7 +30,7 @@ body{
 .btn:disabled{opacity:.6; cursor:not-allowed}
 .input{width:100%; padding:16px 20px; border-radius:999px; border:none; outline:3px solid transparent}
 .input:focus{outline-color:var(--ring); background:#fff}
-.label{display:block; margin:10px 0 6px 10px; font-weight:700}
+.label{display:block; margin:10px 0 6px 60px; font-weight:750}
 
 /* ====== Logo Predictas (fonte Mokoto) ====== */
 .brand{font-family:'Mokoto', Inter, system-ui, sans-serif; letter-spacing:3px}
@@ -73,7 +69,7 @@ th,td{padding:12px 10px; border-bottom:1px solid rgba(255,255,255,.12); white-sp
 /* ====== Login ====== */
 .center{min-height:100%; display:grid; place-items:center; padding:24px}
 .login-box{width:min(820px,92vw); text-align:center}
-.login-title{font-size:56px; margin-bottom:24px; font-family:'Mokoto',Inter,sans-serif}
+.login-title{font-size:90px; margin-bottom:24px; font-family:'Mokoto',Inter,sans-serif}
 .login-form{display:grid; gap:18px; margin-top:16px}
 .login-form .btn{background:linear-gradient(180deg, #8a0042, #7a003a)}
 .link{color:#fff; opacity:.9}
@@ -86,3 +82,39 @@ th,td{padding:12px 10px; border-bottom:1px solid rgba(255,255,255,.12); white-sp
 .tabs{display:flex; gap:8px; background:var(--panel-700); border-radius:16px; padding:6px}
 .tab{padding:10px 16px; border-radius:12px; background:transparent; border:1px solid transparent; cursor:pointer}
 .tab.active{background:#5a5a5a; border-color:rgba(255,255,255,.18)}
+
+/* Botões com fonte Mokoto */
+.btn-mokoto{
+  font-family:'Mokoto', Inter, system-ui, sans-serif;
+  letter-spacing:2px;
+  text-transform:uppercase;
+}
+
+/* Botão primário com mais destaque para ações importantes */
+.btn-primary{
+  background: linear-gradient(180deg, #8a0042, #7a003a);
+  color: #fff;
+  font-size: 18px; /* aumentar um pouco a fonte */
+  padding: 16px 32px; /* tornar o botão um pouco maior */
+}
+
+/* Campos em linha: label à esquerda, input à direita */
+.field{
+  display:grid;
+  grid-template-columns: 120px 1fr;
+  align-items:center;
+  gap:12px;
+}
+@media (max-width: 520px){
+  .field{ grid-template-columns: 1fr; }
+}
+
+/* Botão "Voltar" (outline) */
+.btn-outline{
+  background: transparent;
+  border: 2px solid rgba(255,255,255,.7);
+  color:#fff;
+}
+.btn-outline:hover{
+  background: rgba(255,255,255,.1);
+}

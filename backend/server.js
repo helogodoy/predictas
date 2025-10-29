@@ -1,11 +1,16 @@
+//backend/server.js
 import express from "express";
 import mysql from "mysql2";
 import dotenv from "dotenv";
 
+// carregar variáveis de ambiente o quanto antes
 dotenv.config();
 
 const app = express();
-const port = 3000;
+const port = process.env.PORT ? Number(process.env.PORT) : 3000;
+
+// middlewares
+app.use(express.json());
 
 // conexão MySQL
 const db = mysql.createConnection({

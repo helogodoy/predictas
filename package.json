@@ -17,6 +17,7 @@
     "mysql2": "^3.15.3"
   },
   "devDependencies": {
+    "@types/cors": "^2.8.19",
     "@types/express": "^5.0.4",
     "@types/node": "^24.9.1",
     "nodemon": "^3.1.10",

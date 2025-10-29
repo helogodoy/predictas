@@ -10,7 +10,19 @@ async function j<T>(path:string, init?:RequestInit):Promise<T>{
   return res.json();
 }
 
+export type User = {
+  id: number;
+  nome_empresa: string;
+  email: string;
+};
+
 export const api = {
+  // Autenticação
+  login: (email: string, password: string) => j<{message: string, user: User}>("/login", {
+    method: "POST",
+    body: JSON.stringify({ email, password })
+  }),
+
   // Resumos p/ dashboard
   status: () => j<{online:number; offline:number; alerta:number}>("/status-geral"),
   ultimosAlertas: () => j<Alerta[]>("/alertas?limit=5"),
