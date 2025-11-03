@@ -161,6 +161,13 @@ const api = {
   async motor(id: number) {
     const ms = await this.motores();
     return ms.find((m) => m.id === id) || { id, nome: `Motor ${id}`, localizacao: "--", status: "ONLINE" };
+  },
+   async forgot(email: string): Promise<void> {
+    await postJSON('/api/forgot', { email });
+  },
+
+  async reset(token: string, novaSenha: string): Promise<void> {
+    await postJSON('/api/reset', { token, novaSenha });
   }
 };
 

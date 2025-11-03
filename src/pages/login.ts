@@ -1,5 +1,7 @@
 import api from "../services/api";
 
+// ... resto do arquivo
+
 export function Login() {
   const html = `
   <div class="center">
@@ -13,7 +15,10 @@ export function Login() {
 
         <div class="field">
           <label class="label" for="senha">Senha:</label>
-          <input id="senha" type="password" class="input" placeholder="••••••••" required />
+          <div style="display:flex; align-items:center; gap:8px">
+            <input id="senha" type="password" class="input" placeholder="••••••••" required />
+            <button id="togglePwd" type="button" class="btn btn-outline" style="padding:10px 14px">👁</button>
+          </div>
         </div>
 
         <p id="errorMsg" style="color: var(--err); display: none; margin-top: 8px"></p>
@@ -29,6 +34,16 @@ export function Login() {
     const errorMsg = document.getElementById("errorMsg") as HTMLParagraphElement | null;
     const btnLogin = document.getElementById("btnLogin") as HTMLButtonElement | null;
 
+    const toggle = document.getElementById("togglePwd") as HTMLButtonElement | null;
+    const senhaInput = document.getElementById("senha") as HTMLInputElement | null;
+
+    toggle?.addEventListener("click", () => {
+      if (!senhaInput) return;
+      const isPwd = senhaInput.type === "password";
+      senhaInput.type = isPwd ? "text" : "password";
+      if (toggle) toggle.textContent = isPwd ? "🙈" : "👁";
+    });
+
     form?.addEventListener("submit", async (e) => {
       e.preventDefault();
       if (errorMsg) { errorMsg.style.display = "none"; }
@@ -39,12 +54,8 @@ export function Login() {
         const password = (document.getElementById("senha") as HTMLInputElement).value;
 
         const { user } = await api.login(email, password);
-
-        // Salva usuário e token
         localStorage.setItem("predictas_user", JSON.stringify(user));
         localStorage.setItem("predictas_token", user.token);
-
-        // Vai para o dashboard
         window.location.hash = "#/dashboard";
       } catch (error: any) {
         if (errorMsg) {

@@ -1,18 +1,34 @@
-export function Topbar(title="Nome do Dashboard"){
+// src/components/topbar.ts
+export function Topbar(title: string, companyName?: string) {
+  const comp = companyName || getCompanyNameFromLocalStorage() || "Predictas";
   return `
-  <header class="topbar">
-    <div class="container topbar-inner">
-      <div class="brand" style="font-size:24px">${title}</div>
-      <div class="search">
-        <input id="q" placeholder="Buscar/Filtrar..." />
+    <header class="topbar">
+      <div class="topbar-inner">
+        <button id="btnMenu" class="btn-icon" aria-label="Abrir menu" title="Abrir menu">☰</button>
+        <div class="tb-title">
+          <div class="tb-title-main">${escapeHtml(title || "Dashboard")}</div>
+          <div class="tb-title-sub">${escapeHtml(comp)}</div>
+        </div>
+        <div class="tb-spacer"></div>
       </div>
-      <div class="icon-row">
-        <div class="icon">🔔</div>
-        <div class="icon">🏭</div>
-        <div class="icon">📈</div>
-        <div class="icon">⚙️</div>
-        <a class="icon" href="#/dashboard" title="Home">🏠</a>
-      </div>
-    </div>
-  </header>`;
+    </header>
+  `;
+}
+
+function getCompanyNameFromLocalStorage(): string | null {
+  try {
+    const raw = localStorage.getItem("predictas_user");
+    if (!raw) return null;
+    const user = JSON.parse(raw);
+    // se no futuro você incluir company/empresa no user, prioriza:
+    return (user.company || user.nome || user.email || "").toString();
+  } catch {
+    return null;
+  }
+}
+
+function escapeHtml(s: string) {
+  return (s || "").replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" } as any)[c]
+  );
 }

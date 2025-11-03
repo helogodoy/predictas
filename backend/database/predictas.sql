@@ -107,3 +107,4 @@ JOIN (
 ) l2 ON l1.sensor_id = l2.sensor_id AND l1.momento = l2.max_momento;
 
 /* OBS: o trigger será aplicado num arquivo separado (add-trigger.sql) */
+

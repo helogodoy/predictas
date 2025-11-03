@@ -3,6 +3,7 @@ import { Forgot } from "./pages/forgot";
 import { Dashboard } from "./pages/dashboard";
 import { MotorDetail } from "./pages/motor";
 import { Profile } from "./pages/profile";
+import { Reset } from "./pages/reset"; // <-- NOVO
 
 function mount(html:string){ (document.getElementById("root")!).innerHTML = html; }
 
@@ -10,6 +11,7 @@ async function render(){
   const hash = location.hash || "#/login";
   if(hash.startsWith("#/login")) return mount(Login());
   if(hash.startsWith("#/forgot")) return mount(Forgot());
+  if(hash.startsWith("#/reset")) return mount(Reset()); // <-- NOVO
   if(hash.startsWith("#/dashboard")) return mount(Dashboard());
   if(hash.startsWith("#/motor/")){
     const id = Number(hash.split("/").pop());

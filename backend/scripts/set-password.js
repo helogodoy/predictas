@@ -1,30 +1,41 @@
+// backend/scripts/set-password.js
+import dotenv from "dotenv";
 import mysql from "mysql2/promise";
 import bcrypt from "bcryptjs";
-import dotenv from "dotenv";
+
 dotenv.config();
 
-const email = process.argv[2];
-const novaSenha = process.argv[3];
-if (!email || !novaSenha) {
-  console.error("Uso: node ./scripts/set-password.js <email> <senha>");
-  process.exit(1);
+async function main() {
+  const email = process.argv[2];
+  const novaSenha = process.argv[3];
+
+  if (!email || !novaSenha) {
+    console.log("Uso: node ./scripts/set-password.js <email> <novaSenha>");
+    process.exit(1);
+  }
+
+  const conn = await mysql.createConnection({
+    host: process.env.DB_HOST,
+    port: Number(process.env.DB_PORT || 3306),
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_NAME,
+  });
+
+  try {
+    const hash = await bcrypt.hash(novaSenha, 10);
+    const [res] = await conn.execute(
+      "UPDATE usuarios SET senha_hash = ? WHERE email = ?",
+      [hash, email]
+    );
+    console.log("Atualizado:", (res && res.affectedRows) || 0, "linha(s)");
+    console.log("✅ Senha atualizada para", email);
+  } catch (e) {
+    console.error("Erro ao atualizar senha:", e.message);
+    process.exit(1);
+  } finally {
+    await conn.end();
+  }
 }
 
-const { DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME } = process.env;
-
-const conn = await mysql.createConnection({
-  host: DB_HOST,
-  port: Number(DB_PORT || 3306),
-  user: DB_USER,
-  password: DB_PASSWORD,
-  database: DB_NAME
-});
-const hash = await bcrypt.hash(novaSenha, 10);
-const [r] = await conn.query("UPDATE usuarios SET senha_hash=? WHERE email=?", [hash, email]);
-if (r.affectedRows === 0) {
-  await conn.query("INSERT INTO usuarios (nome, email, senha_hash) VALUES (?,?,?)", ["Predictas", email, hash]);
-  console.log("✅ Usuário criado e senha definida.");
-} else {
-  console.log("✅ Senha atualizada com sucesso.");
-}
-await conn.end();
+main();
