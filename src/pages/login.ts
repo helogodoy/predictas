@@ -1,6 +1,6 @@
-import { api } from "../services/api";
+import api from "../services/api";
 
-export function Login(){
+export function Login() {
   const html = `
   <div class="center">
     <div class="login-box">
@@ -24,37 +24,38 @@ export function Login(){
   </div>
   `;
 
-  // Aguarda o DOM estar pronto
   setTimeout(() => {
-    const form = document.getElementById("loginForm") as HTMLFormElement;
-    const errorMsg = document.getElementById("errorMsg")!;
-    const btnLogin = document.getElementById("btnLogin") as HTMLButtonElement;
+    const form = document.getElementById("loginForm") as HTMLFormElement | null;
+    const errorMsg = document.getElementById("errorMsg") as HTMLParagraphElement | null;
+    const btnLogin = document.getElementById("btnLogin") as HTMLButtonElement | null;
 
     form?.addEventListener("submit", async (e) => {
       e.preventDefault();
-      errorMsg.style.display = "none";
-      btnLogin.disabled = true;
+      if (errorMsg) { errorMsg.style.display = "none"; }
+      if (btnLogin) { btnLogin.disabled = true; }
 
       try {
-        const email = (document.getElementById("login") as HTMLInputElement).value;
+        const email = (document.getElementById("login") as HTMLInputElement).value.trim();
         const password = (document.getElementById("senha") as HTMLInputElement).value;
-        
+
         const { user } = await api.login(email, password);
-        
-        // Salva usuário no localStorage
-        localStorage.setItem("user", JSON.stringify(user));
-        
-        // Redireciona para o dashboard
+
+        // Salva usuário e token
+        localStorage.setItem("predictas_user", JSON.stringify(user));
+        localStorage.setItem("predictas_token", user.token);
+
+        // Vai para o dashboard
         window.location.hash = "#/dashboard";
       } catch (error: any) {
-        errorMsg.textContent = error.message || "Erro ao fazer login. Tente novamente.";
-        errorMsg.style.display = "block";
+        if (errorMsg) {
+          errorMsg.textContent = error.message || "Erro ao fazer login. Tente novamente.";
+          errorMsg.style.display = "block";
+        }
       } finally {
-        btnLogin.disabled = false;
+        if (btnLogin) { btnLogin.disabled = false; }
       }
     });
   }, 0);
 
   return html;
 }
-

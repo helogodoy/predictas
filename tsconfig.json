@@ -6,7 +6,7 @@
     "strict": true,
     "esModuleInterop": true
   },
-  "include": ["src", "env.d.ts"],
-  "exclude": ["api", "node_modules", "dist"],
+  "include": ["src/**/*.ts", "env.d.ts"],
+  "exclude": ["api", "node_modules", "dist", "src/pages/login.js", "./src/pages/login.js"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

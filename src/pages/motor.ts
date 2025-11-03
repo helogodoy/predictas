@@ -1,8 +1,19 @@
 import { Topbar } from "../components/topbar";
 import { api, poll } from "../services/api";
 
-export function MotorDetail(motorId:number){
-  let stop:()=>void = ()=>{};
+// helper para pegar elemento com tipo
+function el(id: string): HTMLElement {
+  const e = document.getElementById(id);
+  if (!e) throw new Error(`Elemento #${id} não encontrado`);
+  return e as HTMLElement;
+}
+function elCanvas(id: string): HTMLCanvasElement {
+  return el(id) as HTMLCanvasElement;
+}
+
+export function MotorDetail(motorId: number) {
+  let stop: () => void = () => {};
+
   const view = `
     ${Topbar("Nome do Dashboard")}
     <div class="container">
@@ -46,47 +57,62 @@ export function MotorDetail(motorId:number){
     </div>
   `;
 
-  setTimeout(async ()=>{
-    const $=(id:string)=>document.getElementById(id)!;
-    const m = await api.motor(motorId).catch(()=>({nome:`Motor ${motorId}`,localizacao:"--"} as any));
-    $("#mtitle").textContent = `${m.nome}`;
-    $("#mloc").textContent = `Local: ${m.localizacao||"-"} | Último Update: ${new Date().toLocaleTimeString()}`;
+  setTimeout(async () => {
+    const m = await api
+      .motor(motorId)
+      .catch(() => ({ nome: `Motor ${motorId}`, localizacao: "--" } as any));
+    el("mtitle").textContent = `${m.nome}`;
+    el("mloc").textContent = `Local: ${m.localizacao || "-"} | Último Update: ${new Date().toLocaleTimeString()}`;
 
-    // @ts-ignore
-    const chart = new Chart(document.getElementById("chartMotor"), {
-      type:"line",
-      data:{ labels:[], datasets:[
-        {label:"Temperatura (°C)", data:[], tension:.3, borderWidth:2},
-        {label:"Vibração (mm/s)", data:[], tension:.3, borderWidth:2}
-      ]},
-      options:{ responsive:true, maintainAspectRatio:false }
+    // @ts-ignore – Chart é global do chart.js/auto
+    const chart = new Chart(elCanvas("chartMotor"), {
+      type: "line",
+      data: {
+        labels: [],
+        datasets: [
+          { label: "Temperatura (°C)", data: [], tension: 0.3, borderWidth: 2 },
+          { label: "Vibração (mm/s)", data: [], tension: 0.3, borderWidth: 2 }
+        ]
+      },
+      options: { responsive: true, maintainAspectRatio: false }
     });
 
-    async function load(janela:"1h"|"7d"|"30d"="1h"){
-      const [t,v]=await Promise.all([api.temperaturaSerie(motorId,janela), api.vibracaoSerie(motorId,janela)]);
-      const labels=t.map(x=>new Date(x.ts).toLocaleTimeString().slice(0,5));
-      chart.data.labels=labels;
-      chart.data.datasets[0].data=t.map(x=>x.valor);
-      chart.data.datasets[1].data=v.map(x=>x.valor);
+    async function load(janela: "1h" | "7d" | "30d" = "1h") {
+      const [t, v] = await Promise.all([
+        api.temperaturaSerie(motorId, janela),
+        api.vibracaoSerie(motorId, janela)
+      ]);
+
+      const labels = t.map((x) => new Date(x.ts).toLocaleTimeString().slice(0, 5));
+      chart.data.labels = labels;
+      chart.data.datasets[0].data = t.map((x) => x.valor);
+      chart.data.datasets[1].data = v.map((x) => x.valor);
       chart.update();
 
-      const curT = t.at(-1)?.valor ?? 0, curV = v.at(-1)?.valor ?? 0;
-      ($("#k-temp") as HTMLElement).textContent = `${curT?.toFixed?.(1) ?? "--"} °C`;
-      ($("#k-vib") as HTMLElement).textContent  = `${curV?.toFixed?.(1) ?? "--"} mm/s`;
-      ($("#k-pico") as HTMLElement).textContent = `${Math.max(...t.map(x=>x.valor),0).toFixed(1)} °C`;
-      $("#k-temp-sub").textContent = "Alto (Limite: 75°C)";
-      $("#k-vib-sub").textContent  = "Alto (Limite: 4,5mm/s)";
+      const curT = t.length ? t[t.length - 1].valor : 0;
+      const curV = v.length ? v[v.length - 1].valor : 0;
+      el("k-temp").textContent = `${curT.toFixed(1)} °C`;
+      el("k-vib").textContent = `${curV.toFixed(1)} mm/s`;
+      const pico = t.length ? Math.max(...t.map((x) => x.valor)) : 0;
+      el("k-pico").textContent = `${pico.toFixed(1)} °C`;
+      el("k-temp-sub").textContent = "Alto (Limite: 75°C)";
+      el("k-vib-sub").textContent = "Alto (Limite: 4,5mm/s)";
     }
+
     await load("1h");
-    stop = poll(()=>load("1h"), 5000, ()=>{});
-    ["t1","t7","t30"].forEach((id,i)=>{
-      document.getElementById(id)!.onclick=()=>{["t1","t7","t30"].forEach(x=>document.getElementById(x)!.classList.remove("active"));
-        document.getElementById(id)!.classList.add("active");
-        const j = (i===0?"1h":i===1?"7d":"30d") as "1h"|"7d"|"30d";
+    stop = poll(() => load("1h"), 5000, () => {});
+
+    ["t1", "t7", "t30"].forEach((id, i) => {
+      const btn = document.getElementById(id);
+      if (!btn) return;
+      btn.onclick = () => {
+        ["t1", "t7", "t30"].forEach((x) => document.getElementById(x)?.classList.remove("active"));
+        btn.classList.add("active");
+        const j = (i === 0 ? "1h" : i === 1 ? "7d" : "30d") as "1h" | "7d" | "30d";
         load(j);
       };
     });
-  },0);
+  }, 0);
 
   return view;
 }

@@ -1,9 +1,10 @@
+import 'chart.js/auto'; // garante Chart no escopo global
 import { Topbar } from "../components/topbar";
-import { api, poll } from "../services/api";
+import api, { poll } from "../services/api";
 
 let stopFns: Array<()=>void> = [];
 
-export function Dashboard(){
+export function Dashboard() {
   stopFns.forEach(f=>f()); stopFns=[];
   const main = `
     ${Topbar("Nome do Dashboard")}
@@ -16,19 +17,16 @@ export function Dashboard(){
             <div><div class="kpi-value" id="k-alerta">--</div><div class="kpi-sub" style="color:#ffd37a">ALERTA</div></div>
           </div>
         </div>
-
         <div class="card" style="text-align:center">
           <div style="font-weight:800">Temperatura Média (°C) – Últimas 24h</div>
           <div id="temp-media" style="font-size:48px; font-weight:800; margin-top:12px">-- °C</div>
           <div style="height:260px; margin-top:8px"><canvas id="chartTemp"></canvas></div>
         </div>
-
         <div class="card">
           <div style="font-weight:800">Vibração Média (mm/s)</div>
           <div style="height:320px; margin-top:8px"><canvas id="chartVib"></canvas></div>
         </div>
       </div>
-
       <div class="grid" style="grid-template-columns: .8fr 1.2fr; margin-top:18px">
         <div class="card">
           <div style="font-weight:800; margin-bottom:8px">Últimos alertas</div>
@@ -39,7 +37,6 @@ export function Dashboard(){
             </table>
           </div>
         </div>
-
         <div class="card">
           <div style="font-weight:800; margin-bottom:8px">Motores</div>
           <div class="table-wrap">
@@ -53,14 +50,10 @@ export function Dashboard(){
     </div>
   `;
 
-  // pós-render
   setTimeout(async ()=>{
     const $ = (id:string) => document.getElementById(id);
-
-    // helper to safely set textContent
     const setText = (id:string, text:string) => { const el = $(id); if(el) el.textContent = text; };
 
-    // Chart.js - create charts only if canvas elements exist
     let tempChart: any = null;
     let vibChart: any = null;
     const tempCanvas = $("chartTemp") as HTMLCanvasElement | null;
@@ -73,10 +66,7 @@ export function Dashboard(){
         data: { labels: [], datasets: [{ label: "Temperatura", data: [], tension: .3, borderWidth: 2 }] },
         options: { responsive: true, maintainAspectRatio: false }
       });
-    } else {
-      console.warn('chartTemp canvas not found');
     }
-
     if (vibCanvas) {
       // @ts-ignore
       vibChart = new Chart(vibCanvas, {
@@ -84,11 +74,8 @@ export function Dashboard(){
         data: { labels: [], datasets: [{ label: "Vibração", data: [], tension: .3, borderWidth: 2 }] },
         options: { responsive: true, maintainAspectRatio: false }
       });
-    } else {
-      console.warn('chartVib canvas not found');
     }
 
-    // Polling (5s). Quando tiver SSE, trocamos fácil.
     stopFns.push(poll(api.status, 5000, s=>{
       setText("k-online", String(s.online));
       setText("k-offline", String(s.offline));
@@ -104,7 +91,8 @@ export function Dashboard(){
           <td><span class="badge ${sev}">${r.severidade[0].toUpperCase()+r.severidade.slice(1)}</span></td>
         </tr>`;
       }).join("");
-  const tb = $("tb-alertas"); if(tb) tb.innerHTML = html || `<tr><td colspan="3">Sem alertas</td></tr>`;
+      const tb = $("tb-alertas");
+      if (tb) tb.innerHTML = html || `<tr><td colspan="3">Sem alertas</td></tr>`;
     }));
 
     async function loadSerie(){
@@ -115,11 +103,11 @@ export function Dashboard(){
       const labels = t.map(x=>new Date(x.ts).toLocaleTimeString().slice(0,5));
       const tvals  = t.map(x=>x.valor);
       const vvals  = v.map(x=>x.valor);
-  if (tempChart) { tempChart.data.labels = labels; tempChart.data.datasets[0].data = tvals; tempChart.update(); }
-  if (vibChart) { vibChart.data.labels  = labels; vibChart.data.datasets[0].data = vvals; vibChart.update(); }
+      if (tempChart) { tempChart.data.labels = labels; tempChart.data.datasets[0].data = tvals; tempChart.update(); }
+      if (vibChart) { vibChart.data.labels  = labels; vibChart.data.datasets[0].data = vvals;  vibChart.update(); }
 
-      const media = tvals.length? (tvals.reduce((a,b)=>a+b,0)/tvals.length) : 0;
-  setText("temp-media", (media?media.toFixed(1):"--")+" °C");
+      const media = tvals.length ? (tvals.reduce((a,b)=>a+b,0)/tvals.length) : 0;
+      setText("temp-media", (media ? media.toFixed(1) : "--")+" °C");
     }
     await loadSerie();
     stopFns.push(poll(loadSerie, 5000, ()=>{}));

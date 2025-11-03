@@ -1,49 +1,188 @@
-const BASE = "/api"; // troque para http://localhost:3000/api se seu back estiver externo
+// src/services/api.ts
 
-export type Motor = { id:number; nome:string; localizacao?:string; status?:"ONLINE"|"OFFLINE"|"ALERTA" };
-export type Leitura = { sensorId:number; ts:string; valor:number };
-export type Alerta = { id:number; motorId:number; tipo:"temperatura"|"vibracao"; valor:number; limite:number; ts:string; severidade:"baixa"|"media"|"alta"; status:"aberto"|"fechado" };
-
-async function j<T>(path:string, init?:RequestInit):Promise<T>{
-  const res = await fetch(BASE+path, { headers:{ "Content-Type":"application/json" }, ...init });
-  if(!res.ok) throw new Error((await res.json().catch(()=>({}))).error || res.statusText);
-  return res.json();
-}
-
-export type User = {
-  id: number;
-  nome_empresa: string;
-  email: string;
-};
-
-export const api = {
-  // Autenticação
-  login: (email: string, password: string) => j<{message: string, user: User}>("/login", {
+// ===== Helpers HTTP =====
+async function postJSON<T>(url: string, body: unknown, token?: string): Promise<T> {
+  const res = await fetch(url, {
     method: "POST",
-    body: JSON.stringify({ email, password })
-  }),
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    },
+    body: JSON.stringify(body)
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as any).error || `HTTP ${res.status}`);
+  }
+  return res.json() as Promise<T>;
+}
 
-  // Resumos p/ dashboard
-  status: () => j<{online:number; offline:number; alerta:number}>("/status-geral"),
-  ultimosAlertas: () => j<Alerta[]>("/alertas?limit=5"),
-  temperaturaSerie: (motorId:number, janela:"1h"|"7d"|"30d"="1h") => j<Leitura[]>(`/leituras?motorId=${motorId}&tipo=temperatura&janela=${janela}`),
-  vibracaoSerie: (motorId:number, janela:"1h"|"7d"|"30d"="1h") => j<Leitura[]>(`/leituras?motorId=${motorId}&tipo=vibracao&janela=${janela}`),
+async function getJSON<T>(url: string, token?: string): Promise<T> {
+  const res = await fetch(url, {
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    }
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as any).error || `HTTP ${res.status}`);
+  }
+  return res.json() as Promise<T>;
+}
 
-  // Listas e detalhes
-  motores: () => j<Motor[]>("/motores"),
-  motor: (id:number) => j<Motor>(`/motores/${id}`),
+// ===== Tipos =====
+export type LoginResponse = { token: string; nome: string; email: string };
+export type User = { token: string; nome: string; email: string };
+
+type StatusGeral = { dispositivos: number; sensores: number; leituras: number; alertas: number };
+
+type AlertaApi = {
+  id: number;
+  leitura_id: number;
+  sensor_id: number;
+  tipo: "temperatura" | "vibracao" | "outro";
+  nivel: "baixo" | "normal" | "alto" | "critico";
+  mensagem: string;
+  criado_em: string;
 };
 
-/* Polling simples para “tempo real”.
-   Troque por SSE (EventSource) quando tiver /api/stream. */
-export function poll<T>(fn:()=>Promise<T>, ms:number, onData:(v:T)=>void){
-  let stopped=false;
-  const loop=async()=>{
-    while(!stopped){
-      try{ onData(await fn()); }catch(e){ /* ignore */ }
-      await new Promise(r=>setTimeout(r, ms));
+type AlertaUI = {
+  id: number;
+  motorId: number;
+  tipo: string;
+  valor: number; // derivado do texto, quando possível (fallback 0)
+  limite: number | string;
+  severidade: "baixa" | "media" | "alta";
+  status: string;
+};
+
+type SerieRow = { ts: string; valor: number };
+
+// ===== API =====
+const api = {
+  // LOGIN
+  async login(email: string, password: string): Promise<{ user: User }> {
+    const data = await postJSON<LoginResponse>("/api/login", { email, senha: password });
+    return { user: { token: data.token, nome: data.nome, email: data.email } };
+  },
+
+  // STATUS GERAL → mapeia para online/offline/alerta
+  async status(): Promise<{ online: number; offline: number; alerta: number }> {
+    const token = localStorage.getItem("predictas_token") || undefined;
+    const d = await getJSON<StatusGeral>("/api/status-geral", token);
+    return {
+      online: Number(d.dispositivos ?? 0),
+      offline: 0,
+      alerta: Number(d.alertas ?? 0)
+    };
+  },
+
+  // ALERTAS (para "Últimos alertas" e para a página Alertas)
+  async ultimosAlertas(limit = 20): Promise<Array<{ motorId: number; ts: string; severidade: "baixa" | "media" | "alta" }>> {
+    const token = localStorage.getItem("predictas_token") || undefined;
+    const rows = await getJSON<AlertaApi[]>("/api/alertas?limit=" + limit, token);
+    return rows.map((r) => {
+      let sev: "baixa" | "media" | "alta" = "baixa";
+      if (r.nivel === "critico") sev = "alta";
+      else if (r.nivel === "alto") sev = "media";
+      return { motorId: Number(r.sensor_id) || 0, ts: r.criado_em, severidade: sev };
+    });
+  },
+
+  // ALERTAS (página Alertas completa)
+  async alertas(limit = 50): Promise<AlertaUI[]> {
+    const token = localStorage.getItem("predictas_token") || undefined;
+    const rows = await getJSON<AlertaApi[]>("/api/alertas?limit=" + limit, token);
+
+    return rows.map((r) => {
+      let sev: "baixa" | "media" | "alta" = "baixa";
+      if (r.nivel === "critico") sev = "alta";
+      else if (r.nivel === "alto") sev = "media";
+
+      // tenta extrair um "valor" numérico da mensagem, ex: "valor=95.2 (min=20, max=80)"
+      let valor = 0;
+      const m = r.mensagem?.match(/valor\s*=\s*([0-9]+(?:\.[0-9]+)?)/i);
+      if (m) valor = Number(m[1]);
+
+      // tenta extrair um "limite" max/min básico
+      let limite: number | string = "-";
+      const mx = r.mensagem?.match(/max\s*=\s*([0-9]+(?:\.[0-9]+)?)/i);
+      const mn = r.mensagem?.match(/min\s*=\s*([0-9]+(?:\.[0-9]+)?)/i);
+      if (mx) limite = Number(mx[1]);
+      else if (mn) limite = Number(mn[1]);
+
+      return {
+        id: r.id,
+        motorId: Number(r.sensor_id) || 0,
+        tipo: r.tipo,
+        valor,
+        limite,
+        severidade: sev,
+        status: r.nivel.toUpperCase() // exibe nivel como status
+      };
+    });
+  },
+
+  // SÉRIES
+  async temperaturaSerie(sensorId: number, _range: "1h" | "7d" | "30d" | "24h" = "1h"): Promise<SerieRow[]> {
+    const token = localStorage.getItem("predictas_token") || undefined;
+    const rows = await getJSON<any[]>(`/api/leituras?sensorId=${sensorId}&limit=60`, token);
+    return rows.map((r) => ({ ts: r.momento, valor: Number(r.valor) }));
+  },
+
+  async vibracaoSerie(sensorId: number, _range: "1h" | "7d" | "30d" | "24h" = "1h"): Promise<SerieRow[]> {
+    const token = localStorage.getItem("predictas_token") || undefined;
+    const rows = await getJSON<any[]>(`/api/leituras?sensorId=${sensorId}&limit=60`, token);
+    return rows.map((r) => ({ ts: r.momento, valor: Number(r.valor) }));
+  },
+
+  // LEITURAS genérica (compatível com sua página Leituras)
+  async leituras(sensorId: number, _tipo: "temperatura" | "vibracao"): Promise<SerieRow[]> {
+    const token = localStorage.getItem("predictas_token") || undefined;
+    const rows = await getJSON<any[]>(`/api/leituras?sensorId=${sensorId}&limit=60`, token);
+    return rows.map((r) => ({ ts: r.momento, valor: Number(r.valor) }));
+  },
+
+  // MOTORES (dispositivos)
+  async motores() {
+    const token = localStorage.getItem("predictas_token") || undefined;
+    const rows = await getJSON<any[]>(`/api/motores`, token).catch(async () => {
+      return getJSON<any[]>(`/motores`, token);
+    });
+    return rows.map((d) => {
+      let st = "ONLINE";
+      if (String(d.status).toLowerCase() === "manutencao") st = "ALERTA";
+      if (String(d.status).toLowerCase() === "inativo") st = "OFFLINE";
+      return { id: d.id, nome: d.nome, localizacao: d.localizacao, status: st };
+    });
+  },
+
+  // MOTOR único (mock com base em /motores)
+  async motor(id: number) {
+    const ms = await this.motores();
+    return ms.find((m) => m.id === id) || { id, nome: `Motor ${id}`, localizacao: "--", status: "ONLINE" };
+  }
+};
+
+// ===== Poll util =====
+function poll<T>(fn: () => Promise<T> | T, intervalMs: number, onData: (data: T) => void) {
+  let stop = false;
+  async function tick() {
+    if (stop) return;
+    try {
+      const data = await fn();
+      onData(data as T);
+    } catch {
+      // silencioso
+    } finally {
+      if (!stop) setTimeout(tick, intervalMs);
     }
+  }
+  tick();
+  return () => {
+    stop = true;
   };
-  loop();
-  return ()=>{ stopped=true; };
 }
+
+export { api, poll };
+export default api;
