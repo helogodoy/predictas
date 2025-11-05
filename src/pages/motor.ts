@@ -1,3 +1,4 @@
+// src/pages/motor.ts
 import "chart.js/auto";
 import { Sidebar } from "../components/sidebar";
 import { Topbar } from "../components/topbar";
@@ -14,7 +15,7 @@ function wireSidebar() {
   btnClose?.addEventListener("click", close);
   overlay?.addEventListener("click", close);
   document.querySelectorAll('[data-close-sidebar="1"]').forEach(a => a.addEventListener("click", close));
-  window.addEventListener("keydown", (e)=>{ if(e.key === "Escape") close(); });
+  window.addEventListener("keydown", (e) => { if (e.key === "Escape") close(); });
 }
 
 export function MotorDetail(motorId: number) {
@@ -40,9 +41,21 @@ export function MotorDetail(motorId: number) {
           <div id="mloc" style="opacity:.9; margin-bottom:12px">Local: -- | Último Update: --</div>
 
           <div class="kpi-cards">
-            <div class="card"><div>Temperatura</div><div id="k-temp" style="color:#ffb0b0; font-size:28px; font-weight:800">-- °C</div><div id="k-temp-sub" style="opacity:.85">—</div></div>
-            <div class="card"><div>Pico (Temp) 24h</div><div id="k-pico" style="font-size:28px; font-weight:800">-- °C</div><div style="opacity:.85">—</div></div>
-            <div class="card"><div>Vibração (RMS)</div><div id="k-vib" style="color:#b7e3ff; font-size:28px; font-weight:800">-- mm/s</div><div id="k-vib-sub" style="opacity:.85">—</div></div>
+            <div class="card">
+              <div>Temperatura</div>
+              <div id="k-temp" style="color:#ffb0b0; font-size:28px; font-weight:800">-- °C</div>
+              <div id="k-temp-sub" style="opacity:.85">—</div>
+            </div>
+            <div class="card">
+              <div>Pico (Temp) 24h</div>
+              <div id="k-pico" style="font-size:32px; font-weight:800">-- °C</div>
+              <div style="opacity:.85">—</div>
+            </div>
+            <div class="card">
+              <div>Vibração (RMS)</div>
+              <div id="k-vib" style="color:#b7e3ff; font-size:28px; font-weight:800">--</div>
+              <div id="k-vib-sub" style="opacity:.85">—</div>
+            </div>
           </div>
 
           <div style="display:grid; gap:14px; grid-template-columns:1fr 1fr; margin-top:14px">
@@ -61,14 +74,16 @@ export function MotorDetail(motorId: number) {
 
           <div class="card" style="margin-top:14px">
             <div style="font-weight:800; margin-bottom:8px">Histórico</div>
-            <div class="table-wrap"><table>
-              <thead><tr><th>Hora</th><th>Evento</th><th>Valor</th><th>Status</th></tr></thead>
-              <tbody id="tb-hist">
-                <tr><td>14:05:12</td><td>Vibração CRÍTICA</td><td>5.1 mm/s</td><td><span class="badge err">ABERTO</span></td></tr>
-                <tr><td>14:10:02</td><td>Temperatura ALTA</td><td>92.0 °C</td><td><span class="badge ok">RESOLVIDO</span></td></tr>
-              </tbody>
-            </table></div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Hora</th><th>Evento</th><th>Valor</th><th>Status</th></tr></thead>
+                <tbody id="tb-hist">
+                  <tr><td>—</td><td>—</td><td>—</td><td><span class="badge ok">—</span></td></tr>
+                </tbody>
+              </table>
+            </div>
           </div>
+
         </div>
       </div>
     </div>
@@ -78,9 +93,16 @@ export function MotorDetail(motorId: number) {
     wireSidebar();
 
     const $ = (id: string) => document.getElementById(id)!;
-    const m = await api.motor?.(motorId).catch(() => ({ nome: `Motor ${motorId}`, localizacao: "--" } as any)) || { nome:`Motor ${motorId}`, localizacao:"--" };
+
+    const m = await api.motor?.(motorId).catch(
+      () => ({ nome: `Motor ${motorId}`, localizacao: "--" } as any)
+    ) || { nome: `Motor ${motorId}`, localizacao: "--" };
+
     $("#mtitle").textContent = `${(m as any).nome}`;
-    $("#mloc").textContent = `Local: ${(m as any).localizacao || "-"} | Último Update: ${new Date().toLocaleTimeString()}`;
+    $("#mloc").textContent =
+      `Local: ${(m as any).localizacao || "-"} | Último Update: ${
+        new Intl.DateTimeFormat("pt-BR", { timeStyle: "medium", hour12: false, timeZone: "America/Sao_Paulo" }).format(new Date())
+      }`;
 
     // @ts-ignore
     const chart = new Chart(document.getElementById("chartMotor"), {
@@ -88,43 +110,69 @@ export function MotorDetail(motorId: number) {
       data: {
         labels: [],
         datasets: [
-          { label: "Temperatura (°C)", data: [], tension: .3, borderWidth: 2 },
-          { label: "Vibração (mm/s)",  data: [], tension: .3, borderWidth: 2 }
+          { label: "Temperatura (°C)", data: [], tension: .35, borderWidth: 2, fill: false },
+          { label: "Vibração (mm/s)",  data: [], tension: .35, borderWidth: 2, fill: false }
         ]
       },
-      options: { responsive: true, maintainAspectRatio: false }
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { intersect: false, mode: "nearest" },
+        plugins: { legend: { display: true }, decimation: { enabled: true } },
+        elements: { point: { radius: 0 } },
+        scales: {
+          x: { grid: { display: false } },
+          y: { beginAtZero: true, grid: { color: "rgba(255,255,255,.1)" } }
+        }
+      }
     });
 
     async function load(janela: "1h" | "7d" | "30d" = "1h") {
       const [t, v] = await Promise.all([
-        api.temperaturaSerie(motorId, "1h"),
-        api.vibracaoSerie(motorId, "1h")
+        api.temperaturaSerie(motorId, janela),
+        api.vibracaoSerie(motorId, janela)
       ]);
-      const labels = t.map(x => new Date(x.ts).toLocaleTimeString().slice(0, 5));
+
+      const labels = t.map(x =>
+        new Intl.DateTimeFormat("pt-BR", {
+          hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "America/Sao_Paulo"
+        }).format(new Date(x.ts))
+      );
+
+      const tvals = t.map(x => Number(x.valor) || 0);
+      const vvals = v.map(x => Number(x.valor) || 0);
+
       chart.data.labels = labels;
-      chart.data.datasets[0].data = t.map(x => x.valor);
-      chart.data.datasets[1].data = v.map(x => x.valor);
+      chart.data.datasets[0].data = tvals;
+      chart.data.datasets[1].data = vvals;
+
+      (chart.options.scales!.y as any).suggestedMax =
+        Math.max(
+          Math.ceil((Math.max(...tvals, 0) + 5) / 5) * 5,
+          Math.ceil((Math.max(...vvals, 0) + 1) / 1) * 1,
+          10
+        );
+
       chart.update();
 
-      const curT = t.at(-1)?.valor ?? 0, curV = v.at(-1)?.valor ?? 0;
-      ($("#k-temp") as HTMLElement).textContent = `${(curT as number)?.toFixed?.(1) ?? "--"} °C`;
-      ($("#k-vib")  as HTMLElement).textContent = `${(curV as number)?.toFixed?.(1) ?? "--"} mm/s`;
-      ($("#k-pico") as HTMLElement).textContent = `${Math.max(...t.map(x => x.valor), 0).toFixed(1)} °C`;
-      $("#k-temp-sub").textContent = "Alto (Limite: 75°C)";
-      $("#k-vib-sub").textContent  = "Alto (Limite: 4,5mm/s)";
+      const lastT = t.length ? t[t.length - 1].valor : undefined;
+      const lastV = v.length ? v[v.length - 1].valor : undefined;
+
+      (document.getElementById("k-temp")!).textContent = `${(Number(lastT) || 0).toFixed(1)} °C`;
+      (document.getElementById("k-vib")!).textContent  = `${(Number(lastV) || 0).toFixed(1)}`;
+      (document.getElementById("k-pico")!).textContent = `${Math.max(...tvals, 0).toFixed(1)} °C`;
+
+      document.getElementById("k-temp-sub")!.textContent = "Monitorando";
+      document.getElementById("k-vib-sub")!.textContent  = "Monitorando";
+
+      document.getElementById("mloc")!.textContent =
+        `Local: ${(m as any).localizacao || "-"} | Último Update: ${
+          new Intl.DateTimeFormat("pt-BR", { timeStyle: "medium", hour12: false, timeZone: "America/Sao_Paulo" }).format(new Date())
+        }`;
     }
 
     await load("1h");
     stop = poll(() => load("1h"), 5000, () => {});
-
-    ["t1", "t7", "t30"].forEach((id, i) => {
-      document.getElementById(id)!.onclick = () => {
-        ["t1", "t7", "t30"].forEach(x => document.getElementById(x)!.classList.remove("active"));
-        document.getElementById(id)!.classList.add("active");
-        const j = (i === 0 ? "1h" : i === 1 ? "7d" : "30d") as "1h" | "7d" | "30d";
-        load(j);
-      };
-    });
   }, 0);
 
   return view;

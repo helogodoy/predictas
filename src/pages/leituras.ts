@@ -17,14 +17,23 @@ function wireSidebar() {
   window.addEventListener("keydown", (e)=>{ if(e.key==="Escape") close(); });
 }
 
-export async function Leituras() {
-  // exemplo: sensor 1 temperatura
-  const data = await api.temperaturaSerie(1, "1h");
+function fmtDateTime(d: string | number | Date) {
+  return new Intl.DateTimeFormat("pt-BR", {
+    dateStyle: "short",
+    timeStyle: "short",
+    hour12: false,
+    timeZone: "America/Sao_Paulo"
+  }).format(new Date(d));
+}
 
-  const body = data.slice().reverse().map(l => `
+export async function Leituras() {
+  // Por enquanto: série de TEMPERATURA das últimas ~120 leituras
+  const data = await api.leituras(1, "temperatura").catch(() => []);
+
+  const body = (data as any[]).slice().reverse().map(l => `
     <tr>
-      <td>${new Date(l.ts).toLocaleString()}</td>
-      <td>${Number(l.valor).toFixed(1)}</td>
+      <td>${fmtDateTime(l.ts)}</td>
+      <td>${Number(l.valor || 0).toFixed(1)}</td>
     </tr>
   `).join("");
 
@@ -35,10 +44,18 @@ export async function Leituras() {
       <div class="container">
         <div class="card">
           <h3 style="margin-top:0">${t("leituras_sensor")}</h3>
-          <div class="table-wrap">
+
+          <div class="table-wrap" style="margin-top:8px">
             <table>
-              <thead><tr><th>${t("quando")}</th><th>${t("valor_c")}</th></tr></thead>
-              <tbody>${body || `<tr><td colspan="2">${t("sem_leituras")}</td></tr>`}</tbody>
+              <thead>
+                <tr>
+                  <th>${t("quando")}</th>
+                  <th>${t("valor_c")}</th>
+                </tr>
+              </thead>
+              <tbody id="tb-leituras">
+                ${body || `<tr><td colspan="2">${t("sem_leituras")}</td></tr>`}
+              </tbody>
             </table>
           </div>
         </div>
@@ -46,6 +63,21 @@ export async function Leituras() {
     </div>
   `;
 
-  setTimeout(wireSidebar, 0);
+  setTimeout(() => {
+    wireSidebar();
+    // Se quiser atualizar periodicamente essa tabela, descomente:
+    // poll(() => api.leituras(1, "temperatura"), 5000, (rows) => {
+    //   const tb = document.getElementById("tb-leituras");
+    //   if (!tb) return;
+    //   const htmlRows = (rows as any[]).slice().reverse().map(l => `
+    //     <tr>
+    //       <td>${fmtDateTime(l.ts)}</td>
+    //       <td>${Number(l.valor || 0).toFixed(1)}</td>
+    //     </tr>
+    //   `).join("");
+    //   tb.innerHTML = htmlRows || `<tr><td colspan="2">${t("sem_leituras")}</td></tr>`;
+    // });
+  }, 0);
+
   return html;
 }

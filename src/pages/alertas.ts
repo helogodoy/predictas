@@ -1,6 +1,6 @@
 import { Sidebar } from "../components/sidebar";
 import { Topbar } from "../components/topbar";
-import api from "../services/api";
+import api, { poll } from "../services/api";
 import { t } from "../i18n";
 
 function wireSidebar() {
@@ -17,14 +17,23 @@ function wireSidebar() {
   window.addEventListener("keydown", (e)=>{ if(e.key==="Escape") close(); });
 }
 
-export async function Alertas() {
-  const rows = await api.ultimosAlertas(50);
+function fmtDateTime(d: string | number | Date) {
+  return new Intl.DateTimeFormat("pt-BR", {
+    dateStyle: "short",
+    timeStyle: "medium",
+    hour12: false,
+    timeZone: "America/Sao_Paulo"
+  }).format(new Date(d));
+}
 
-  const body = rows.map(r => {
+export async function Alertas() {
+  const rows = await api.alertas(50).catch(() => []);
+
+  const body = (rows as any[]).map(r => {
     const sev = r.severidade === "alta" ? "err" : r.severidade === "media" ? "warn" : "ok";
     return `<tr>
       <td>MTR - ${r.motorId}</td>
-      <td>${new Date(r.ts).toLocaleString()}</td>
+      <td>${fmtDateTime(r.ts || (r as any).criado_em)}</td>
       <td><span class="badge ${sev}">${r.severidade[0].toUpperCase() + r.severidade.slice(1)}</span></td>
     </tr>`;
   }).join("");
@@ -38,8 +47,16 @@ export async function Alertas() {
           <div style="font-weight:800; margin-bottom:8px">${t("historico_alertas")}</div>
           <div class="table-wrap">
             <table>
-              <thead><tr><th>Alerta</th><th>${t("data_hora")}</th><th>${t("criticidade")}</th></tr></thead>
-              <tbody>${body || `<tr><td colspan="3">${t("sem_alertas")}</td></tr>`}</tbody>
+              <thead>
+                <tr>
+                  <th>Alerta</th>
+                  <th>${t("data_hora")}</th>
+                  <th>${t("criticidade")}</th>
+                </tr>
+              </thead>
+              <tbody id="tb-alertas">
+                ${body || `<tr><td colspan="3">${t("sem_alertas")}</td></tr>`}
+              </tbody>
             </table>
           </div>
         </div>
@@ -47,6 +64,24 @@ export async function Alertas() {
     </div>
   `;
 
-  setTimeout(wireSidebar, 0);
+  setTimeout(() => {
+    wireSidebar();
+    const tb = document.getElementById("tb-alertas");
+
+    // Atualiza automaticamente a cada 5s
+    poll(() => api.alertas(50), 5000, (rows2) => {
+      if (!tb) return;
+      const htmlRows = (rows2 as any[]).map(r => {
+        const sev = r.severidade === "alta" ? "err" : r.severidade === "media" ? "warn" : "ok";
+        return `<tr>
+          <td>MTR - ${r.motorId}</td>
+          <td>${fmtDateTime(r.ts || (r as any).criado_em)}</td>
+          <td><span class="badge ${sev}">${r.severidade[0].toUpperCase() + r.severidade.slice(1)}</span></td>
+        </tr>`;
+      }).join("");
+      tb.innerHTML = htmlRows || `<tr><td colspan="3">${t("sem_alertas")}</td></tr>`;
+    });
+  }, 0);
+
   return html;
 }

@@ -15,13 +15,13 @@ function wireSidebar() {
   btnClose?.addEventListener("click", close);
   overlay?.addEventListener("click", close);
   document.querySelectorAll('[data-close-sidebar="1"]').forEach(a => a.addEventListener("click", close));
-  window.addEventListener("keydown", (e)=>{ if(e.key==="Escape") close(); });
+  window.addEventListener("keydown", (e) => { if (e.key === "Escape") close(); });
 }
 
-let stopFns: Array<()=>void> = [];
+let stopFns: Array<() => void> = [];
 
 export function Dashboard() {
-  stopFns.forEach(f=>f()); stopFns = [];
+  stopFns.forEach(f => f()); stopFns = [];
 
   const main = `
     ${Sidebar("dashboard")}
@@ -40,11 +40,14 @@ export function Dashboard() {
           <div class="card" style="text-align:center">
             <div style="font-weight:800">${t("temperatura_media")}</div>
             <div id="temp-media" style="font-size:48px; font-weight:800; margin-top:12px">-- °C</div>
+            <div style="margin-top:6px; opacity:.9">Máx 24h: <span id="temp-max" style="font-weight:800; font-size:26px">-- °C</span></div>
             <div style="height:260px; margin-top:8px"><canvas id="chartTemp"></canvas></div>
           </div>
 
-          <div class="card">
+          <div class="card" style="text-align:center">
             <div style="font-weight:800">${t("vibracao_media")}</div>
+            <div id="vib-media" style="font-size:36px; font-weight:800; margin-top:12px">--</div>
+            <div style="margin-top:6px; opacity:.9">Máx 24h: <span id="vib-max" style="font-weight:800; font-size:26px">--</span></div>
             <div style="height:320px; margin-top:8px"><canvas id="chartVib"></canvas></div>
           </div>
         </div>
@@ -85,35 +88,47 @@ export function Dashboard() {
     const tempCanvas = $("chartTemp") as HTMLCanvasElement | null;
     const vibCanvas = $("chartVib") as HTMLCanvasElement | null;
 
+    const commonOpts = {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { intersect: false, mode: "nearest" as const },
+      plugins: { legend: { display: false }, decimation: { enabled: true } },
+      scales: { x: { grid: { display: false } }, y: { beginAtZero: true, grid: { color: "rgba(255,255,255,.1)" } } },
+      elements: { point: { radius: 0 } }
+    };
+
     if (tempCanvas) {
       // @ts-ignore
       tempChart = new Chart(tempCanvas, {
         type: "line",
-        data: { labels: [], datasets: [{ label: "Temperatura", data: [], tension: .3, borderWidth: 2 }] },
-        options: { responsive: true, maintainAspectRatio: false }
+        data: { labels: [], datasets: [{ label: "Temperatura (°C)", data: [], tension: .35, borderWidth: 2, fill: false }] },
+        options: commonOpts
       });
     }
     if (vibCanvas) {
       // @ts-ignore
       vibChart = new Chart(vibCanvas, {
         type: "line",
-        data: { labels: [], datasets: [{ label: "Vibração", data: [], tension: .3, borderWidth: 2 }] },
-        options: { responsive: true, maintainAspectRatio: false }
+        data: { labels: [], datasets: [{ label: "Vibração (mm/s)", data: [], tension: .35, borderWidth: 2, fill: false }] },
+        options: commonOpts
       });
     }
 
+    // KPIs online/offline/alerta
     stopFns.push(poll(api.status, 5000, s => {
       setText("k-online", String(s.online));
       setText("k-offline", String(s.offline));
       setText("k-alerta", String(s.alerta));
     }));
 
+    // Tabela de alertas
     stopFns.push(poll(() => api.ultimosAlertas(), 5000, rows => {
       const html = rows.map(r => {
         const sev = r.severidade === "alta" ? "err" : r.severidade === "media" ? "warn" : "ok";
+        const when = new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "medium", hour12: false, timeZone: "America/Sao_Paulo" }).format(new Date(r.ts));
         return `<tr>
           <td>MTR - ${r.motorId}</td>
-          <td>${new Date(r.ts).toLocaleTimeString()}</td>
+          <td>${when}</td>
           <td><span class="badge ${sev}">${r.severidade[0].toUpperCase() + r.severidade.slice(1)}</span></td>
         </tr>`;
       }).join("");
@@ -121,35 +136,61 @@ export function Dashboard() {
       if (tb) tb.innerHTML = html || `<tr><td colspan="3">${t("sem_alertas")}</td></tr>`;
     }));
 
+    // Séries + KPIs de média e máximos
     async function loadSerie() {
       const [tserie, vserie] = await Promise.all([
-        api.temperaturaSerie(1, "1h"),
-        api.vibracaoSerie(1, "1h"),
+        api.temperaturaSerie(1, "24h"),
+        api.vibracaoSerie(1, "24h"),
       ]);
-      const labels = tserie.map(x => new Date(x.ts).toLocaleTimeString().slice(0, 5));
-      const tvals = tserie.map(x => x.valor);
-      const vvals = vserie.map(x => x.valor);
 
-      if (tempChart) { tempChart.data.labels = labels; tempChart.data.datasets[0].data = tvals; tempChart.update(); }
-      if (vibChart)  { vibChart.data.labels  = labels; vibChart.data.datasets[0].data  = vvals;  vibChart.update(); }
+      const labels = tserie.map(x =>
+        new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "America/Sao_Paulo" })
+          .format(new Date(x.ts))
+      );
 
-      const media = tvals.length ? (tvals.reduce((a, b) => a + b, 0) / tvals.length) : 0;
-      setText("temp-media", (media ? media.toFixed(1) : "--") + " °C");
+      const tvals = tserie.map(x => Number(x.valor) || 0);
+      const vvals = vserie.map(x => Number(x.valor) || 0);
+
+      if (tempChart) {
+        tempChart.data.labels = labels;
+        tempChart.data.datasets[0].data = tvals;
+        (tempChart.options.scales as any).y.suggestedMax = Math.max(Math.ceil((Math.max(...tvals, 0) + 5) / 5) * 5, 10);
+        tempChart.update();
+      }
+      if (vibChart) {
+        vibChart.data.labels = labels;
+        vibChart.data.datasets[0].data = vvals;
+        (vibChart.options.scales as any).y.suggestedMax = Math.max(Math.ceil((Math.max(...vvals, 0) + 1) / 1) * 1, 5);
+        vibChart.update();
+      }
+
+      const mediaT = tvals.length ? tvals.reduce((a, b) => a + b, 0) / tvals.length : 0;
+      const mediaV = vvals.length ? vvals.reduce((a, b) => a + b, 0) / vvals.length : 0;
+      const maxT = tvals.length ? Math.max(...tvals) : 0;
+      const maxV = vvals.length ? Math.max(...vvals) : 0;
+
+      setText("temp-media", (mediaT ? mediaT.toFixed(1) : "--") + " °C");
+      setText("temp-max",   (maxT ? maxT.toFixed(1)   : "--") + " °C");
+      setText("vib-media",  (mediaV ? mediaV.toFixed(1) : "--"));
+      setText("vib-max",    (maxV ? maxV.toFixed(1)   : "--"));
     }
-    await loadSerie();
-    stopFns.push(poll(loadSerie, 5000, () => { }));
 
+    await loadSerie();
+    stopFns.push(poll(loadSerie, 5000, () => {}));
+
+    // Motores
     const motores = await api.motores().catch(() => []);
     const tbMotores = $("tb-motores");
     if (tbMotores) {
-      tbMotores.innerHTML = motores.map(m => {
-        const statusClass = m.status === "ALERTA" ? "warn" : m.status === "OFFLINE" ? "err" : "ok";
+      tbMotores.innerHTML = motores.map((m: any) => {
+        const st = String(m.status || "online").toUpperCase();
+        const statusClass = st === "ALERTA" ? "warn" : st === "OFFLINE" ? "err" : "ok";
         return `<tr>
           <td>${m.id}</td><td>${m.nome}</td><td>${m.localizacao || "-"}</td>
-          <td><span class="badge ${statusClass}">${m.status || "ONLINE"}</span></td>
-          <td><a class="link" href="#/motor/${m.id}">${t("abrir")}</a></td>
+          <td><span class="badge ${statusClass}">${st}</span></td>
+          <td><a class="link" href="#/motor/${m.id}">Abrir</a></td>
         </tr>`;
-      }).join("");
+      }).join("") || `<tr><td colspan="5">Nenhum dispositivo</td></tr>`;
     }
   }, 0);
 

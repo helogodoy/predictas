@@ -1,5 +1,4 @@
 // src/services/api.ts
-
 // ===== Helpers HTTP =====
 async function postJSON<T>(url: string, body: unknown, token?: string): Promise<T> {
   const res = await fetch(url, {
@@ -18,16 +17,24 @@ async function postJSON<T>(url: string, body: unknown, token?: string): Promise<
 }
 
 async function getJSON<T>(url: string, token?: string): Promise<T> {
-  const res = await fetch(url, {
-    headers: {
-      ...(token ? { Authorization: `Bearer ${token}` } : {})
-    }
-  });
+  const res = await fetch(url, { headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) } });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error((err as any).error || `HTTP ${res.status}`);
   }
   return res.json() as Promise<T>;
+}
+
+// ===== Formatadores (pt-BR, America/Sao_Paulo) =====
+const tz = "America/Sao_Paulo";
+export function fmtTime(d: Date | string | number) {
+  return new Intl.DateTimeFormat("pt-BR", { timeStyle: "medium", hour12: false, timeZone: tz }).format(new Date(d));
+}
+export function fmtTimeHM(d: Date | string | number) {
+  return new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: tz }).format(new Date(d));
+}
+export function fmtDateTime(d: Date | string | number) {
+  return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short", hour12: false, timeZone: tz }).format(new Date(d));
 }
 
 // ===== Tipos =====
@@ -50,7 +57,7 @@ type AlertaUI = {
   id: number;
   motorId: number;
   tipo: string;
-  valor: number; // derivado da mensagem quando possível
+  valor: number;
   limite: number | string;
   severidade: "baixa" | "media" | "alta";
   status: string;
@@ -66,18 +73,14 @@ const api = {
     return { user: { token: data.token, nome: data.nome, email: data.email } };
   },
 
-  // STATUS GERAL → mapeia para online/offline/alerta
+  // STATUS GERAL
   async status(): Promise<{ online: number; offline: number; alerta: number }> {
     const token = localStorage.getItem("predictas_token") || undefined;
     const d = await getJSON<StatusGeral>("/api/status-geral", token);
-    return {
-      online: Number(d.dispositivos ?? 0),
-      offline: 0,
-      alerta: Number(d.alertas ?? 0)
-    };
+    return { online: Number(d.dispositivos ?? 0), offline: 0, alerta: Number(d.alertas ?? 0) };
   },
 
-  // ALERTAS (cards + página)
+  // ALERTAS
   async ultimosAlertas(limit = 20): Promise<Array<{ motorId: number; ts: string; severidade: "baixa" | "media" | "alta" }>> {
     const token = localStorage.getItem("predictas_token") || undefined;
     const rows = await getJSON<AlertaApi[]>("/api/alertas?limit=" + limit, token);
@@ -120,33 +123,30 @@ const api = {
     });
   },
 
-  // SÉRIES (agora por MÉTRICA; o backend ignora sensorId)
+  // SÉRIES POR MÉTRICA (backend ignora sensorId)
   async temperaturaSerie(_sensorId: number, _range: "1h" | "7d" | "30d" | "24h" = "1h"): Promise<SerieRow[]> {
     const token = localStorage.getItem("predictas_token") || undefined;
-    const rows = await getJSON<any[]>(`/api/leituras?metric=temperatura&limit=60`, token);
+    const rows = await getJSON<any[]>(`/api/leituras?metric=temperatura&limit=120`, token);
     return rows.map((r) => ({ ts: r.momento, valor: Number(r.valor) }));
   },
 
   async vibracaoSerie(_sensorId: number, _range: "1h" | "7d" | "30d" | "24h" = "1h"): Promise<SerieRow[]> {
     const token = localStorage.getItem("predictas_token") || undefined;
-    const rows = await getJSON<any[]>(`/api/leituras?metric=vibracao&limit=60`, token);
+    const rows = await getJSON<any[]>(`/api/leituras?metric=vibracao&limit=120`, token);
     return rows.map((r) => ({ ts: r.momento, valor: Number(r.valor) }));
   },
 
-  // LEITURAS genérica (para tua página Leituras)
   async leituras(_sensorId: number, tipo: "temperatura" | "vibracao"): Promise<SerieRow[]> {
     const token = localStorage.getItem("predictas_token") || undefined;
     const metric = tipo === "vibracao" ? "vibracao" : "temperatura";
-    const rows = await getJSON<any[]>(`/api/leituras?metric=${metric}&limit=60`, token);
+    const rows = await getJSON<any[]>(`/api/leituras?metric=${metric}&limit=120`, token);
     return rows.map((r) => ({ ts: r.momento, valor: Number(r.valor) }));
   },
 
-  // MOTORES (placeholder vindo do backend)
+  // MOTORES — sem fallback de mock
   async motores() {
     const token = localStorage.getItem("predictas_token") || undefined;
-    const rows = await getJSON<any[]>(`/api/motores`, token).catch(async () => {
-      return getJSON<any[]>(`/motores`, token);
-    });
+    const rows = await getJSON<any[]>(`/api/motores`, token);
     return rows.map((d) => {
       let st = "ONLINE";
       if (String(d.status).toLowerCase() === "manutencao") st = "ALERTA";
@@ -155,19 +155,16 @@ const api = {
     });
   },
 
+  
+
   async motor(id: number) {
-    const ms = await this.motores();
+    const ms = await this.motores().catch(() => []);
     return ms.find((m) => m.id === id) || { id, nome: `Motor ${id}`, localizacao: "--", status: "ONLINE" };
   },
 
-  // Esqueci/Reset de senha
-  async forgot(email: string): Promise<void> {
-    await postJSON("/api/forgot", { email });
-  },
-
-  async reset(token: string, novaSenha: string): Promise<void> {
-    await postJSON("/api/reset", { token, novaSenha });
-  }
+  // Esqueci/Reset
+  async forgot(email: string): Promise<void> { await postJSON("/api/forgot", { email }); },
+  async reset(token: string, novaSenha: string): Promise<void> { await postJSON("/api/reset", { token, novaSenha }); }
 };
 
 // ===== Poll util =====
@@ -175,19 +172,11 @@ function poll<T>(fn: () => Promise<T> | T, intervalMs: number, onData: (data: T)
   let stop = false;
   async function tick() {
     if (stop) return;
-    try {
-      const data = await fn();
-      onData(data as T);
-    } catch {
-      // silencioso
-    } finally {
-      if (!stop) setTimeout(tick, intervalMs);
-    }
+    try { onData(await fn()); } catch {}
+    finally { if (!stop) setTimeout(tick, intervalMs); }
   }
   tick();
-  return () => {
-    stop = true;
-  };
+  return () => { stop = true; };
 }
 
 export { api, poll };
