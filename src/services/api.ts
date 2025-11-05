@@ -50,7 +50,7 @@ type AlertaUI = {
   id: number;
   motorId: number;
   tipo: string;
-  valor: number; // derivado do texto, quando possível (fallback 0)
+  valor: number; // derivado da mensagem quando possível
   limite: number | string;
   severidade: "baixa" | "media" | "alta";
   status: string;
@@ -77,7 +77,7 @@ const api = {
     };
   },
 
-  // ALERTAS (para "Últimos alertas" e para a página Alertas)
+  // ALERTAS (cards + página)
   async ultimosAlertas(limit = 20): Promise<Array<{ motorId: number; ts: string; severidade: "baixa" | "media" | "alta" }>> {
     const token = localStorage.getItem("predictas_token") || undefined;
     const rows = await getJSON<AlertaApi[]>("/api/alertas?limit=" + limit, token);
@@ -89,7 +89,6 @@ const api = {
     });
   },
 
-  // ALERTAS (página Alertas completa)
   async alertas(limit = 50): Promise<AlertaUI[]> {
     const token = localStorage.getItem("predictas_token") || undefined;
     const rows = await getJSON<AlertaApi[]>("/api/alertas?limit=" + limit, token);
@@ -99,12 +98,10 @@ const api = {
       if (r.nivel === "critico") sev = "alta";
       else if (r.nivel === "alto") sev = "media";
 
-      // tenta extrair um "valor" numérico da mensagem, ex: "valor=95.2 (min=20, max=80)"
       let valor = 0;
       const m = r.mensagem?.match(/valor\s*=\s*([0-9]+(?:\.[0-9]+)?)/i);
       if (m) valor = Number(m[1]);
 
-      // tenta extrair um "limite" max/min básico
       let limite: number | string = "-";
       const mx = r.mensagem?.match(/max\s*=\s*([0-9]+(?:\.[0-9]+)?)/i);
       const mn = r.mensagem?.match(/min\s*=\s*([0-9]+(?:\.[0-9]+)?)/i);
@@ -118,32 +115,33 @@ const api = {
         valor,
         limite,
         severidade: sev,
-        status: r.nivel.toUpperCase() // exibe nivel como status
+        status: r.nivel.toUpperCase()
       };
     });
   },
 
-  // SÉRIES
-  async temperaturaSerie(sensorId: number, _range: "1h" | "7d" | "30d" | "24h" = "1h"): Promise<SerieRow[]> {
+  // SÉRIES (agora por MÉTRICA; o backend ignora sensorId)
+  async temperaturaSerie(_sensorId: number, _range: "1h" | "7d" | "30d" | "24h" = "1h"): Promise<SerieRow[]> {
     const token = localStorage.getItem("predictas_token") || undefined;
-    const rows = await getJSON<any[]>(`/api/leituras?sensorId=${sensorId}&limit=60`, token);
+    const rows = await getJSON<any[]>(`/api/leituras?metric=temperatura&limit=60`, token);
     return rows.map((r) => ({ ts: r.momento, valor: Number(r.valor) }));
   },
 
-  async vibracaoSerie(sensorId: number, _range: "1h" | "7d" | "30d" | "24h" = "1h"): Promise<SerieRow[]> {
+  async vibracaoSerie(_sensorId: number, _range: "1h" | "7d" | "30d" | "24h" = "1h"): Promise<SerieRow[]> {
     const token = localStorage.getItem("predictas_token") || undefined;
-    const rows = await getJSON<any[]>(`/api/leituras?sensorId=${sensorId}&limit=60`, token);
+    const rows = await getJSON<any[]>(`/api/leituras?metric=vibracao&limit=60`, token);
     return rows.map((r) => ({ ts: r.momento, valor: Number(r.valor) }));
   },
 
-  // LEITURAS genérica (compatível com sua página Leituras)
-  async leituras(sensorId: number, _tipo: "temperatura" | "vibracao"): Promise<SerieRow[]> {
+  // LEITURAS genérica (para tua página Leituras)
+  async leituras(_sensorId: number, tipo: "temperatura" | "vibracao"): Promise<SerieRow[]> {
     const token = localStorage.getItem("predictas_token") || undefined;
-    const rows = await getJSON<any[]>(`/api/leituras?sensorId=${sensorId}&limit=60`, token);
+    const metric = tipo === "vibracao" ? "vibracao" : "temperatura";
+    const rows = await getJSON<any[]>(`/api/leituras?metric=${metric}&limit=60`, token);
     return rows.map((r) => ({ ts: r.momento, valor: Number(r.valor) }));
   },
 
-  // MOTORES (dispositivos)
+  // MOTORES (placeholder vindo do backend)
   async motores() {
     const token = localStorage.getItem("predictas_token") || undefined;
     const rows = await getJSON<any[]>(`/api/motores`, token).catch(async () => {
@@ -157,17 +155,18 @@ const api = {
     });
   },
 
-  // MOTOR único (mock com base em /motores)
   async motor(id: number) {
     const ms = await this.motores();
     return ms.find((m) => m.id === id) || { id, nome: `Motor ${id}`, localizacao: "--", status: "ONLINE" };
   },
-   async forgot(email: string): Promise<void> {
-    await postJSON('/api/forgot', { email });
+
+  // Esqueci/Reset de senha
+  async forgot(email: string): Promise<void> {
+    await postJSON("/api/forgot", { email });
   },
 
   async reset(token: string, novaSenha: string): Promise<void> {
-    await postJSON('/api/reset', { token, novaSenha });
+    await postJSON("/api/reset", { token, novaSenha });
   }
 };
 

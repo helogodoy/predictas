@@ -19,29 +19,29 @@ const JWT_SECRET = process.env.JWT_SECRET || "predictas-secret-fallback";
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 
+// log simples
 app.use((req, _res, next) => {
   console.log(`${req.method} ${req.path}`);
   next();
 });
 
-
-// Pool MySQL (mysql2/promise)
+// Pool MySQL (Railway)
 const pool = mysql.createPool({
   host: process.env.DB_HOST,
   port: Number(process.env.DB_PORT || 3306),
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME,
+  database: process.env.DB_NAME, // ex.: railway
   connectionLimit: 10,
 });
 
-// Healthcheck
+// healthcheck
 app.get("/", (_req: Request, res: Response) => {
   res.json({ ok: true, service: "Predictas API", version: "1.0.0" });
 });
 
 // ----------------------------
-// Utilitários
+// Utils
 // ----------------------------
 function plusMinutes(min: number) {
   const d = new Date();
@@ -63,7 +63,7 @@ function auth(req: Request, res: Response, next: NextFunction) {
 }
 
 // ----------------------------
-// Login (gera JWT)
+// Login (JWT) - usa tabela `usuarios`
 // ----------------------------
 async function handleLogin(req: Request, res: Response) {
   try {
@@ -87,12 +87,11 @@ async function handleLogin(req: Request, res: Response) {
   }
 }
 
-// expõe /api/login e alias /login
 app.post("/api/login", handleLogin);
-app.post("/login", handleLogin);
+app.post("/login", handleLogin); // alias
 
 // ----------------------------
-// Esqueci / Reset de senha
+// Esqueci / Reset de senha - usa `password_resets`
 // ----------------------------
 app.post("/api/forgot", async (req, res) => {
   try {
@@ -101,7 +100,6 @@ app.post("/api/forgot", async (req, res) => {
 
     const [rows] = await pool.query<any[]>("SELECT id, email FROM usuarios WHERE email = ? LIMIT 1", [email]);
     if (!Array.isArray(rows) || rows.length === 0) {
-      // resposta genérica para não revelar existência
       return res.json({ message: "Se o e-mail estiver cadastrado, enviaremos um link." });
     }
     const user = rows[0];
@@ -109,7 +107,10 @@ app.post("/api/forgot", async (req, res) => {
     const token = crypto.randomBytes(24).toString("hex");
     const expires = plusMinutes(30);
 
-    await pool.query("INSERT INTO password_resets (user_id, token, expires_at) VALUES (?,?,?)", [user.id, token, expires]);
+    await pool.query(
+      "INSERT INTO password_resets (user_id, token, expires_at) VALUES (?,?,?)",
+      [user.id, token, expires]
+    );
 
     const resetUrl = `http://localhost:5173/#/reset?token=${token}`;
     console.log("🔗 Link de reset (dev):", resetUrl);
@@ -151,54 +152,53 @@ app.post("/api/reset", async (req, res) => {
 });
 
 // ----------------------------
-// Rotas protegidas (JWT)
+// Rotas protegidas (leem a TABELA REAL do Python: dht11_sw520_leituras)
+// colunas: id, temperatura, umidade, transicoes, percent_low, recebido_em
 // ----------------------------
+
+// KPIs / status geral
 app.get("/api/status-geral", auth, async (_req: Request, res: Response) => {
   try {
-    const [[counts]] = await pool.query<any[]>(
+    const [[kpi]] = await pool.query<any[]>(
       `SELECT
-        (SELECT COUNT(*) FROM dispositivos) AS dispositivos,
-        (SELECT COUNT(*) FROM sensores)     AS sensores,
-        (SELECT COUNT(*) FROM leituras)     AS leituras,
-        (SELECT COUNT(*) FROM alertas)      AS alertas`
+         COUNT(*)                AS leituras,
+         AVG(temperatura)        AS temperatura_media,
+         AVG(umidade)            AS umidade_media,
+         AVG(percent_low)        AS percent_low_media
+       FROM dht11_sw520_leituras`
     );
-    return res.json(counts || { dispositivos: 0, sensores: 0, leituras: 0, alertas: 0 });
+
+    // mapeia para os 3 cards (por enquanto: dispositivos/sensores são placeholders)
+    return res.json({
+      dispositivos: 1, // placeholder
+      sensores: 2,     // DHT + SW520
+      leituras: Number(kpi?.leituras || 0),
+      alertas: (Number(kpi?.percent_low_media || 0) > 80) ? 1 : 0,
+    });
   } catch (e) {
     console.error("[/api/status-geral] erro:", e);
     return res.json({ dispositivos: 0, sensores: 0, leituras: 0, alertas: 0 });
   }
 });
 
-app.get("/api/alertas", auth, async (req: Request, res: Response) => {
-  try {
-    const limit = Math.min(Number(req.query.limit || 20), 200);
-    const [rows] = await pool.query<any[]>(
-      `SELECT id, leitura_id, sensor_id, tipo, nivel, mensagem, criado_em
-         FROM alertas
-        ORDER BY id DESC
-        LIMIT ?`,
-      [limit]
-    );
-    return res.json(rows);
-  } catch (e) {
-    console.error("[/api/alertas] erro:", e);
-    return res.json([]);
-  }
-});
-
+// série temporal: usa query param "metric": temperatura|umidade|vibracao
+// vibracao = percent_low (ou troque para transicoes se preferir)
 app.get("/api/leituras", auth, async (req: Request, res: Response) => {
   try {
-    const sensorId = Number(req.query.sensorId || 0);
-    const limit = Math.min(Number(req.query.limit || 60), 500);
-    if (!sensorId) return res.json([]);
+    const limit = Math.min(Number(req.query.limit || 200), 1000);
+    const metric = String(req.query.metric || "temperatura").toLowerCase();
+
+    let col = "temperatura";
+    if (metric === "umidade") col = "umidade";
+    else if (metric === "vibracao") col = "percent_low"; // ou "transicoes"
 
     const [rows] = await pool.query<any[]>(
-      `SELECT momento, valor
-         FROM leituras
-        WHERE sensor_id = ?
-        ORDER BY momento DESC
+      `SELECT recebido_em AS momento, ${col} AS valor
+         FROM dht11_sw520_leituras
+        WHERE ${col} IS NOT NULL
+        ORDER BY recebido_em DESC
         LIMIT ?`,
-      [sensorId, limit]
+      [limit]
     );
     return res.json(rows);
   } catch (e) {
@@ -207,17 +207,50 @@ app.get("/api/leituras", auth, async (req: Request, res: Response) => {
   }
 });
 
+// lista de "motores" (placeholder para não quebrar o front)
 app.get("/api/motores", auth, async (_req: Request, res: Response) => {
+  // Se quiser, crie uma tabela real; por enquanto retorna 1 item fixo
+  return res.json([
+    { id: 1, nome: "Motor Principal", localizacao: "Linha 1", status: "ativo" }
+  ]);
+});
+
+// "Alertas" gerados a partir de regras simples sobre as leituras recentes
+app.get("/api/alertas", auth, async (req: Request, res: Response) => {
   try {
+    const limit = Math.min(Number(req.query.limit || 20), 200);
     const [rows] = await pool.query<any[]>(
-      `SELECT id, nome, localizacao, status
-         FROM dispositivos
-        ORDER BY id DESC
-        LIMIT 500`
+      `SELECT id AS leitura_id, recebido_em, temperatura, umidade, percent_low
+         FROM dht11_sw520_leituras
+        ORDER BY recebido_em DESC
+        LIMIT ?`,
+      [limit]
     );
-    return res.json(rows);
+
+    // Converte para o formato esperado pelo front (nivel, mensagem, etc.)
+    const mapped = rows.map((r: any) => {
+      let nivel: "baixo" | "normal" | "alto" | "critico" = "normal";
+      // regra exemplo:
+      if (r.temperatura != null && r.temperatura > 95) nivel = "critico";
+      else if (r.temperatura != null && r.temperatura > 80) nivel = "alto";
+
+      if (r.percent_low != null && r.percent_low > 90) nivel = "critico";
+      else if (r.percent_low != null && r.percent_low > 75 && nivel !== "critico") nivel = "alto";
+
+      return {
+        id: r.leitura_id,
+        leitura_id: r.leitura_id,
+        sensor_id: 1,                 // placeholder
+        tipo: "temperatura",          // ou "vibracao" conforme sua regra
+        nivel,
+        mensagem: `Temp=${r.temperatura ?? "-"} | Umid=${r.umidade ?? "-"} | %LOW=${r.percent_low ?? "-"}`,
+        criado_em: r.recebido_em,
+      };
+    });
+
+    return res.json(mapped);
   } catch (e) {
-    console.error("[/api/motores] erro:", e);
+    console.error("[/api/alertas] erro:", e);
     return res.json([]);
   }
 });
