@@ -1,46 +1,52 @@
+import { Sidebar } from "../components/sidebar";
+import { Topbar } from "../components/topbar";
 import api from "../services/api";
+import { t } from "../i18n";
 
-type AlertaRow = {
-  id: number;
-  motorId: number;
-  tipo: string;
-  valor: number;
-  limite: number | string;
-  severidade: "baixa" | "media" | "alta";
-  status: string;
-};
+function wireSidebar() {
+  const sidebar = document.getElementById("sidebar");
+  const overlay = document.getElementById("sidebarOverlay");
+  const btnOpen = document.getElementById("btnMenu");
+  const btnClose = document.getElementById("btnCloseSidebar");
+  const open = () => { sidebar?.classList.add("open"); overlay?.classList.add("show"); };
+  const close = () => { sidebar?.classList.remove("open"); overlay?.classList.remove("show"); };
+  btnOpen?.addEventListener("click", open);
+  btnClose?.addEventListener("click", close);
+  overlay?.addEventListener("click", close);
+  document.querySelectorAll('[data-close-sidebar="1"]').forEach(a => a.addEventListener("click", close));
+  window.addEventListener("keydown", (e)=>{ if(e.key==="Escape") close(); });
+}
 
 export async function Alertas() {
-  const alertas: AlertaRow[] = await api.alertas();
+  const rows = await api.ultimosAlertas(50);
 
-  const rowsHtml = alertas
-    .map((a) => {
-      const badge =
-        a.severidade === "alta" ? "err" : a.severidade === "media" ? "warn" : "ok";
-      return `
-        <tr>
-          <td>${a.id}</td>
-          <td>${a.motorId}</td>
-          <td>${a.tipo}</td>
-          <td>${a.valor.toFixed(1)}</td>
-          <td>${a.limite}</td>
-          <td><span class="badge ${badge}">${a.severidade}</span></td>
-          <td>${a.status}</td>
-        </tr>`;
-    })
-    .join("");
+  const body = rows.map(r => {
+    const sev = r.severidade === "alta" ? "err" : r.severidade === "media" ? "warn" : "ok";
+    return `<tr>
+      <td>MTR - ${r.motorId}</td>
+      <td>${new Date(r.ts).toLocaleString()}</td>
+      <td><span class="badge ${sev}">${r.severidade[0].toUpperCase() + r.severidade.slice(1)}</span></td>
+    </tr>`;
+  }).join("");
 
-  return `
-    <div class="card">
-      <h3>Alertas</h3>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr><th>ID</th><th>Motor</th><th>Tipo</th><th>Valor</th><th>Limite</th><th>Severidade</th><th>Status</th></tr>
-          </thead>
-          <tbody>${rowsHtml}</tbody>
-        </table>
+  const html = `
+    ${Sidebar("alertas")}
+    ${Topbar(t("page_alertas"))}
+    <div class="main-content">
+      <div class="container">
+        <div class="card">
+          <div style="font-weight:800; margin-bottom:8px">${t("historico_alertas")}</div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Alerta</th><th>${t("data_hora")}</th><th>${t("criticidade")}</th></tr></thead>
+              <tbody>${body || `<tr><td colspan="3">${t("sem_alertas")}</td></tr>`}</tbody>
+            </table>
+          </div>
+        </div>
       </div>
     </div>
   `;
+
+  setTimeout(wireSidebar, 0);
+  return html;
 }

@@ -1,7 +1,5 @@
 import api from "../services/api";
 
-// ... resto do arquivo
-
 export function Login() {
   const html = `
   <div class="center">
@@ -17,7 +15,13 @@ export function Login() {
           <label class="label" for="senha">Senha:</label>
           <div style="display:flex; align-items:center; gap:8px">
             <input id="senha" type="password" class="input" placeholder="••••••••" required />
-            <button id="togglePwd" type="button" class="btn btn-outline" style="padding:10px 14px">👁</button>
+            <!-- 👇 Trocar o botão pelo bloco abaixo -->
+            <button id="togglePwd" type="button"
+              class="btn btn-outline"
+              aria-label="Mostrar senha"
+              style="padding:8px; display:flex; align-items:center; justify-content:center; width:40px; height:40px">
+              <img id="eyeIcon" src="public/assets/eye.png" alt="Mostrar senha" width="20" height="20" />
+            </button>
           </div>
         </div>
 
@@ -35,13 +39,19 @@ export function Login() {
     const btnLogin = document.getElementById("btnLogin") as HTMLButtonElement | null;
 
     const toggle = document.getElementById("togglePwd") as HTMLButtonElement | null;
+    const eyeIcon = document.getElementById("eyeIcon") as HTMLImageElement | null;
     const senhaInput = document.getElementById("senha") as HTMLInputElement | null;
 
     toggle?.addEventListener("click", () => {
-      if (!senhaInput) return;
+      if (!senhaInput || !eyeIcon || !toggle) return;
       const isPwd = senhaInput.type === "password";
       senhaInput.type = isPwd ? "text" : "password";
-      if (toggle) toggle.textContent = isPwd ? "🙈" : "👁";
+
+      // Alterna a imagem e a acessibilidade
+      eyeIcon.src = isPwd ? "public/assets/eyeclosed.png" : "public/assets/eye.png";
+      eyeIcon.alt = isPwd ? "Ocultar senha" : "Mostrar senha";
+      toggle.setAttribute("aria-label", isPwd ? "Ocultar senha" : "Mostrar senha");
+      toggle.setAttribute("aria-pressed", String(isPwd));
     });
 
     form?.addEventListener("submit", async (e) => {
