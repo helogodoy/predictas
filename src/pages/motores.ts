@@ -17,28 +17,31 @@ function wireSidebar() {
   window.addEventListener("keydown", (e)=>{ if(e.key==="Escape") close(); });
 }
 
-export async function Leituras() {
-  // exemplo: sensor 1 temperatura
-  const data = await api.temperaturaSerie(1, "1h");
+export async function Motores() {
+  const motores = await api.motores();
 
-  const body = data.slice().reverse().map(l => `
-    <tr>
-      <td>${new Date(l.ts).toLocaleString()}</td>
-      <td>${Number(l.valor).toFixed(1)}</td>
-    </tr>
-  `).join("");
+  const body = motores.map(m => {
+    const statusClass = m.status === "ALERTA" ? "warn" : m.status === "OFFLINE" ? "err" : "ok";
+    return `<tr>
+      <td>${m.id}</td>
+      <td>${m.nome}</td>
+      <td>${m.localizacao || "-"}</td>
+      <td><span class="badge ${statusClass}">${m.status || "ONLINE"}</span></td>
+      <td><a class="link" href="#/motor/${m.id}">${t("abrir")}</a></td>
+    </tr>`;
+  }).join("");
 
   const html = `
-    ${Sidebar("leituras")}
-    ${Topbar(t("page_leituras"))}
+    ${Sidebar("motores")}
+    ${Topbar(t("page_motores"))}
     <div class="main-content">
       <div class="container">
         <div class="card">
-          <h3 style="margin-top:0">${t("leituras_sensor")}</h3>
+          <div style="font-weight:800; margin-bottom:8px">${t("dispositivos")}</div>
           <div class="table-wrap">
             <table>
-              <thead><tr><th>${t("quando")}</th><th>${t("valor_c")}</th></tr></thead>
-              <tbody>${body || `<tr><td colspan="2">${t("sem_leituras")}</td></tr>`}</tbody>
+              <thead><tr><th>ID</th><th>${t("motores")}</th><th>Local</th><th>Status</th><th></th></tr></thead>
+              <tbody>${body || `<tr><td colspan="5">${t("nenhum_dispositivo")}</td></tr>`}</tbody>
             </table>
           </div>
         </div>
