@@ -20,6 +20,13 @@ function wireSidebar() {
 
 let stopFns: Array<() => void> = [];
 
+// util para converter UTC → horário de Brasília
+function toBrasiliaTime(ts: string | number | Date): Date {
+  const d = new Date(ts);
+  // cria novo Date com -3 horas
+  return new Date(d.getTime() - 3 * 60 * 60 * 1000);
+}
+
 export function Dashboard() {
   stopFns.forEach(f => f()); stopFns = [];
 
@@ -125,7 +132,14 @@ export function Dashboard() {
     stopFns.push(poll(() => api.ultimosAlertas(), 5000, rows => {
       const html = rows.map(r => {
         const sev = r.severidade === "alta" ? "err" : r.severidade === "media" ? "warn" : "ok";
-        const when = new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "medium", hour12: false, timeZone: "America/Sao_Paulo" }).format(new Date(r.ts));
+        // corrige UTC -> horário de Brasília
+        const dt = toBrasiliaTime(r.ts);
+        const when = new Intl.DateTimeFormat("pt-BR", {
+          dateStyle: "short",
+          timeStyle: "medium",
+          hour12: false,
+          timeZone: "America/Sao_Paulo"
+        }).format(dt);
         return `<tr>
           <td>MTR - ${r.motorId}</td>
           <td>${when}</td>
@@ -144,8 +158,12 @@ export function Dashboard() {
       ]);
 
       const labels = tserie.map(x =>
-        new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "America/Sao_Paulo" })
-          .format(new Date(x.ts))
+        new Intl.DateTimeFormat("pt-BR", {
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false,
+          timeZone: "America/Sao_Paulo"
+        }).format(toBrasiliaTime(x.ts))
       );
 
       const tvals = tserie.map(x => Number(x.valor) || 0);

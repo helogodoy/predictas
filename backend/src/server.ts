@@ -6,8 +6,16 @@ import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import mysql from "mysql2/promise";
+import path from "path";
+import type { RowDataPacket } from "mysql2";
 
-dotenv.config();
+// ✅ ESM-friendly __dirname
+import { fileURLToPath } from "url";
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// ✅ Carrega .env da pasta backend com caminho absoluto
+dotenv.config({ path: path.resolve(__dirname, "../.env") });
 
 // ----------------------------
 // Configuração básica
@@ -25,15 +33,61 @@ app.use((req, _res, next) => {
   next();
 });
 
+// ----------------------------
+// Tipagens de linhas do banco
+// ----------------------------
+interface UserRow extends RowDataPacket {
+  id: number;
+  email: string;
+  nome: string;
+  role: string | null;
+  senha_hash: string;
+}
+
+interface PasswordResetRow extends RowDataPacket {
+  id: number;
+  user_id: number;
+  expires_at: string | Date;
+  used_at: string | Date | null;
+}
+
+interface SerieRow extends RowDataPacket {
+  momento: Date | string;
+  valor: number | null;
+}
+
+interface KpiRow extends RowDataPacket {
+  leituras: number;
+  temperatura_media: number | null;
+  umidade_media: number | null;
+  percent_low_media: number | null;
+}
+
+// ----------------------------
 // Pool MySQL (Railway)
+// ----------------------------
 const pool = mysql.createPool({
-  host: process.env.DB_HOST,
-  port: Number(process.env.DB_PORT || 3306),
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME, // ex.: railway
+  host: process.env.DB_HOST,                 // crossover.proxy.rlwy.net
+  port: Number(process.env.DB_PORT || 3306),// 17940
+  user: process.env.DB_USER,                // root
+  password: process.env.DB_PASSWORD,        // ****
+  database: process.env.DB_NAME,            // railway
   connectionLimit: 10,
 });
+
+// Teste inicial de conexão (tipado)
+(async () => {
+  try {
+    const conn = await pool.getConnection();
+    const [rows] = await conn.query<RowDataPacket[]>("SELECT NOW() AS agora");
+    // Access seguro com RowDataPacket
+    const agora = (rows[0] as RowDataPacket)["agora"];
+    console.log("✅ Conectado ao banco de dados Railway —", agora);
+    conn.release();
+  } catch (err) {
+    console.error("❌ Falha ao conectar ao banco:", err);
+  }
+})();
 
 // healthcheck
 app.get("/", (_req: Request, res: Response) => {
@@ -72,8 +126,13 @@ async function handleLogin(req: Request, res: Response) {
 
     if (!email || !senha) return res.status(400).json({ error: "Preencha todos os campos" });
 
-    const [rows] = await pool.query<any[]>("SELECT * FROM usuarios WHERE email = ? LIMIT 1", [email]);
-    if (!Array.isArray(rows) || rows.length === 0) return res.status(401).json({ error: "Usuário não encontrado" });
+    const [rows] = await pool.query<UserRow[]>(
+      "SELECT id, email, nome, role, senha_hash FROM usuarios WHERE email = ? LIMIT 1",
+      [email]
+    );
+    if (!Array.isArray(rows) || rows.length === 0) {
+      return res.status(401).json({ error: "Usuário não encontrado" });
+    }
 
     const user = rows[0];
     const ok = await bcrypt.compare(String(senha), String(user.senha_hash || ""));
@@ -98,7 +157,10 @@ app.post("/api/forgot", async (req, res) => {
     const { email } = req.body || {};
     if (!email) return res.status(400).json({ error: "Informe o e-mail" });
 
-    const [rows] = await pool.query<any[]>("SELECT id, email FROM usuarios WHERE email = ? LIMIT 1", [email]);
+    const [rows] = await pool.query<UserRow[]>(
+      "SELECT id, email, nome FROM usuarios WHERE email = ? LIMIT 1",
+      [email]
+    );
     if (!Array.isArray(rows) || rows.length === 0) {
       return res.json({ message: "Se o e-mail estiver cadastrado, enviaremos um link." });
     }
@@ -127,7 +189,7 @@ app.post("/api/reset", async (req, res) => {
     const { token, novaSenha } = req.body || {};
     if (!token || !novaSenha) return res.status(400).json({ error: "Dados incompletos" });
 
-    const [rows] = await pool.query<any[]>(
+    const [rows] = await pool.query<PasswordResetRow[]>(
       `SELECT pr.id, pr.user_id, pr.expires_at, pr.used_at
          FROM password_resets pr
         WHERE pr.token = ?
@@ -159,16 +221,15 @@ app.post("/api/reset", async (req, res) => {
 // KPIs / status geral
 app.get("/api/status-geral", auth, async (_req: Request, res: Response) => {
   try {
-    const [[kpi]] = await pool.query<any[]>(
+    const [[kpi]] = await pool.query<KpiRow[]>(
       `SELECT
-         COUNT(*)                AS leituras,
-         AVG(temperatura)        AS temperatura_media,
-         AVG(umidade)            AS umidade_media,
-         AVG(percent_low)        AS percent_low_media
+         COUNT(*)          AS leituras,
+         AVG(temperatura)  AS temperatura_media,
+         AVG(umidade)      AS umidade_media,
+         AVG(percent_low)  AS percent_low_media
        FROM dht11_sw520_leituras`
     );
 
-    // mapeia para os 3 cards (por enquanto: dispositivos/sensores são placeholders)
     return res.json({
       dispositivos: 1, // placeholder
       sensores: 2,     // DHT + SW520
@@ -182,7 +243,7 @@ app.get("/api/status-geral", auth, async (_req: Request, res: Response) => {
 });
 
 // série temporal: usa query param "metric": temperatura|umidade|vibracao
-// vibracao = percent_low (ou troque para transicoes se preferir)
+// vibracao = percent_low (ou troque para transicoes)
 app.get("/api/leituras", auth, async (req: Request, res: Response) => {
   try {
     const limit = Math.min(Number(req.query.limit || 200), 1000);
@@ -192,7 +253,7 @@ app.get("/api/leituras", auth, async (req: Request, res: Response) => {
     if (metric === "umidade") col = "umidade";
     else if (metric === "vibracao") col = "percent_low"; // ou "transicoes"
 
-    const [rows] = await pool.query<any[]>(
+    const [rows] = await pool.query<SerieRow[]>(
       `SELECT recebido_em AS momento, ${col} AS valor
          FROM dht11_sw520_leituras
         WHERE ${col} IS NOT NULL
@@ -209,7 +270,6 @@ app.get("/api/leituras", auth, async (req: Request, res: Response) => {
 
 // lista de "motores" (placeholder para não quebrar o front)
 app.get("/api/motores", auth, async (_req: Request, res: Response) => {
-  // Se quiser, crie uma tabela real; por enquanto retorna 1 item fixo
   return res.json([
     { id: 1, nome: "Motor Principal", localizacao: "Linha 1", status: "ativo" }
   ]);
@@ -219,7 +279,7 @@ app.get("/api/motores", auth, async (_req: Request, res: Response) => {
 app.get("/api/alertas", auth, async (req: Request, res: Response) => {
   try {
     const limit = Math.min(Number(req.query.limit || 20), 200);
-    const [rows] = await pool.query<any[]>(
+    const [rows] = await pool.query<RowDataPacket[]>(
       `SELECT id AS leitura_id, recebido_em, temperatura, umidade, percent_low
          FROM dht11_sw520_leituras
         ORDER BY recebido_em DESC
@@ -227,24 +287,26 @@ app.get("/api/alertas", auth, async (req: Request, res: Response) => {
       [limit]
     );
 
-    // Converte para o formato esperado pelo front (nivel, mensagem, etc.)
-    const mapped = rows.map((r: any) => {
-      let nivel: "baixo" | "normal" | "alto" | "critico" = "normal";
-      // regra exemplo:
-      if (r.temperatura != null && r.temperatura > 95) nivel = "critico";
-      else if (r.temperatura != null && r.temperatura > 80) nivel = "alto";
+    const mapped = rows.map((r) => {
+      const temperatura = r["temperatura"] as number | null;
+      const umidade = r["umidade"] as number | null;
+      const percent_low = r["percent_low"] as number | null;
 
-      if (r.percent_low != null && r.percent_low > 90) nivel = "critico";
-      else if (r.percent_low != null && r.percent_low > 75 && nivel !== "critico") nivel = "alto";
+      let nivel: "baixo" | "normal" | "alto" | "critico" = "normal";
+      if (temperatura != null && temperatura > 95) nivel = "critico";
+      else if (temperatura != null && temperatura > 80) nivel = "alto";
+
+      if (percent_low != null && percent_low > 90) nivel = "critico";
+      else if (percent_low != null && percent_low > 75 && nivel !== "critico") nivel = "alto";
 
       return {
-        id: r.leitura_id,
-        leitura_id: r.leitura_id,
-        sensor_id: 1,                 // placeholder
-        tipo: "temperatura",          // ou "vibracao" conforme sua regra
+        id: r["leitura_id"] as number,
+        leitura_id: r["leitura_id"] as number,
+        sensor_id: 1,
+        tipo: "temperatura",
         nivel,
-        mensagem: `Temp=${r.temperatura ?? "-"} | Umid=${r.umidade ?? "-"} | %LOW=${r.percent_low ?? "-"}`,
-        criado_em: r.recebido_em,
+        mensagem: `Temp=${temperatura ?? "-"} | Umid=${umidade ?? "-"} | %LOW=${percent_low ?? "-"}`,
+        criado_em: r["recebido_em"],
       };
     });
 
