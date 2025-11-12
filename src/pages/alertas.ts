@@ -14,74 +14,77 @@ function wireSidebar() {
   btnClose?.addEventListener("click", close);
   overlay?.addEventListener("click", close);
   document.querySelectorAll('[data-close-sidebar="1"]').forEach(a => a.addEventListener("click", close));
-  window.addEventListener("keydown", (e)=>{ if(e.key==="Escape") close(); });
+  window.addEventListener("keydown", (e) => { if (e.key === "Escape") close(); });
 }
 
-function fmtDateTime(d: string | number | Date) {
-  return new Intl.DateTimeFormat("pt-BR", {
-    dateStyle: "short",
-    timeStyle: "medium",
-    hour12: false,
-    timeZone: "America/Sao_Paulo"
-  }).format(new Date(d));
+function toBrasiliaTime(ts: string | number | Date): Date {
+  const d = new Date(ts);
+  return new Date(d.getTime() - 3 * 60 * 60 * 1000);
 }
 
-export async function Alertas() {
-  const rows = await api.alertas(50).catch(() => []);
+export function Alertas() {
+  let stop: () => void = () => {};
 
-  const body = (rows as any[]).map(r => {
-    const sev = r.severidade === "alta" ? "err" : r.severidade === "media" ? "warn" : "ok";
-    return `<tr>
-      <td>MTR - ${r.motorId}</td>
-      <td>${fmtDateTime(r.ts || (r as any).criado_em)}</td>
-      <td><span class="badge ${sev}">${r.severidade[0].toUpperCase() + r.severidade.slice(1)}</span></td>
-    </tr>`;
-  }).join("");
-
-  const html = `
+  const view = `
     ${Sidebar("alertas")}
     ${Topbar(t("page_alertas"))}
     <div class="main-content">
       <div class="container">
         <div class="card">
-          <div style="font-weight:800; margin-bottom:8px">${t("historico_alertas")}</div>
+          <div style="font-weight:800; margin-bottom:8px">${t("ultimos_alertas")}</div>
           <div class="table-wrap">
-            <table>
+            <table style="width:100%; text-align:center; border-collapse:collapse;">
               <thead>
                 <tr>
-                  <th>Alerta</th>
+                  <th>${t("motores")}</th>
+                  <th>${t("tipo")}</th>
+                  <th>${t("valor")}</th>
                   <th>${t("data_hora")}</th>
                   <th>${t("criticidade")}</th>
                 </tr>
               </thead>
               <tbody id="tb-alertas">
-                ${body || `<tr><td colspan="3">${t("sem_alertas")}</td></tr>`}
+                <tr><td colspan="5">${t("carregando")}...</td></tr>
               </tbody>
             </table>
           </div>
         </div>
       </div>
-    </div>
-  `;
+    </div>`;
 
-  setTimeout(() => {
+  setTimeout(async () => {
     wireSidebar();
-    const tb = document.getElementById("tb-alertas");
+    const $ = (id: string) => document.getElementById(id)!;
 
-    // Atualiza automaticamente a cada 5s
-    poll(() => api.alertas(50), 5000, (rows2) => {
-      if (!tb) return;
-      const htmlRows = (rows2 as any[]).map(r => {
-        const sev = r.severidade === "alta" ? "err" : r.severidade === "media" ? "warn" : "ok";
-        return `<tr>
-          <td>MTR - ${r.motorId}</td>
-          <td>${fmtDateTime(r.ts || (r as any).criado_em)}</td>
-          <td><span class="badge ${sev}">${r.severidade[0].toUpperCase() + r.severidade.slice(1)}</span></td>
-        </tr>`;
-      }).join("");
-      tb.innerHTML = htmlRows || `<tr><td colspan="3">${t("sem_alertas")}</td></tr>`;
-    });
+    async function load() {
+      try {
+        const rows = await api.ultimosAlertas().catch(() => []);
+        const html = rows.map((r: any) => {
+          const sev = r.severidade === "alta" ? "err" : r.severidade === "media" ? "warn" : "ok";
+          const dt = toBrasiliaTime(r.ts ?? r.criado_em ?? r.data);
+          const when = new Intl.DateTimeFormat("pt-BR", {
+            dateStyle: "short",
+            timeStyle: "medium",
+            hour12: false,
+            timeZone: "America/Sao_Paulo",
+          }).format(dt);
+          return `<tr>
+            <td>${r.motorId ? `MTR - ${r.motorId}` : "-"}</td>
+            <td>${r.tipo ?? "-"}</td>
+            <td>${r.valor ?? "-"}</td>
+            <td>${when}</td>
+            <td><span class="badge ${sev}">${(r.severidade ?? "Baixa").charAt(0).toUpperCase() + (r.severidade ?? "Baixa").slice(1)}</span></td>
+          </tr>`;
+        }).join("");
+        $("tb-alertas").innerHTML = html || `<tr><td colspan="5">${t("sem_alertas")}</td></tr>`;
+      } catch (e) {
+        $("tb-alertas").innerHTML = `<tr><td colspan="5">${t("erro_carregar") ?? "Erro ao carregar"}</td></tr>`;
+      }
+    }
+
+    await load();
+    stop = poll(load, 5000, () => {});
   }, 0);
 
-  return html;
+  return view;
 }
