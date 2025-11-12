@@ -1,7 +1,21 @@
 // src/services/api.ts
+
+// ===== Config de base =====
+// Prioridade: localStorage("predictas_api") > VITE_API_URL > heurística localhost
+const BASE_URL =
+  (typeof localStorage !== "undefined" && localStorage.getItem("predictas_api")) ||
+  (import.meta as any)?.env?.VITE_API_URL ||
+  (typeof window !== "undefined"
+    ? window.location.origin.replace(":5173", ":3000")
+    : "http://localhost:3000");
+
+function abs(url: string) {
+  return url.startsWith("http") ? url : `${BASE_URL.replace(/\/$/, "")}${url}`;
+}
+
 // ===== Helpers HTTP =====
 async function postJSON<T>(url: string, body: unknown, token?: string): Promise<T> {
-  const res = await fetch(url, {
+  const res = await fetch(abs(url), {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -17,7 +31,9 @@ async function postJSON<T>(url: string, body: unknown, token?: string): Promise<
 }
 
 async function getJSON<T>(url: string, token?: string): Promise<T> {
-  const res = await fetch(url, { headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) } });
+  const res = await fetch(abs(url), {
+    headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) }
+  });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error((err as any).error || `HTTP ${res.status}`);
@@ -53,7 +69,7 @@ type AlertaApi = {
   criado_em: string;
 };
 
-type AlertaUI = {
+export type AlertaUI = {
   id: number;
   motorId: number;
   tipo: string;
@@ -61,6 +77,7 @@ type AlertaUI = {
   limite: number | string;
   severidade: "baixa" | "media" | "alta";
   status: string;
+  criado_em: string; // 🔁 incluído para o histórico
 };
 
 type SerieRow = { ts: string; valor: number };
@@ -70,7 +87,12 @@ const api = {
   // LOGIN
   async login(email: string, password: string): Promise<{ user: User }> {
     const data = await postJSON<LoginResponse>("/api/login", { email, senha: password });
-    return { user: { token: data.token, nome: data.nome, email: data.email } };
+    const user: User = { token: data.token, nome: data.nome, email: data.email };
+    try {
+      localStorage.setItem("predictas_token", user.token);
+      localStorage.setItem("predictas_user", JSON.stringify(user));
+    } catch {}
+    return { user };
   },
 
   // STATUS GERAL
@@ -118,32 +140,33 @@ const api = {
         valor,
         limite,
         severidade: sev,
-        status: r.nivel.toUpperCase()
+        status: r.nivel.toUpperCase(),
+        criado_em: r.criado_em, // 🔁 mapeado do backend
       };
     });
   },
 
-  // SÉRIES POR MÉTRICA (backend ignora sensorId)
+  // SÉRIES POR MÉTRICA — normalizando ordem do tempo ASC
   async temperaturaSerie(_sensorId: number, _range: "1h" | "7d" | "30d" | "24h" = "1h"): Promise<SerieRow[]> {
     const token = localStorage.getItem("predictas_token") || undefined;
     const rows = await getJSON<any[]>(`/api/leituras?metric=temperatura&limit=120`, token);
-    return rows.map((r) => ({ ts: r.momento, valor: Number(r.valor) }));
+    return rows.reverse().map((r) => ({ ts: r.momento, valor: Number(r.valor) }));
   },
 
   async vibracaoSerie(_sensorId: number, _range: "1h" | "7d" | "30d" | "24h" = "1h"): Promise<SerieRow[]> {
     const token = localStorage.getItem("predictas_token") || undefined;
     const rows = await getJSON<any[]>(`/api/leituras?metric=vibracao&limit=120`, token);
-    return rows.map((r) => ({ ts: r.momento, valor: Number(r.valor) }));
+    return rows.reverse().map((r) => ({ ts: r.momento, valor: Number(r.valor) }));
   },
 
   async leituras(_sensorId: number, tipo: "temperatura" | "vibracao"): Promise<SerieRow[]> {
     const token = localStorage.getItem("predictas_token") || undefined;
     const metric = tipo === "vibracao" ? "vibracao" : "temperatura";
     const rows = await getJSON<any[]>(`/api/leituras?metric=${metric}&limit=120`, token);
-    return rows.map((r) => ({ ts: r.momento, valor: Number(r.valor) }));
+    return rows.reverse().map((r) => ({ ts: r.momento, valor: Number(r.valor) }));
   },
 
-  // MOTORES — sem fallback de mock
+  // MOTORES
   async motores() {
     const token = localStorage.getItem("predictas_token") || undefined;
     const rows = await getJSON<any[]>(`/api/motores`, token);
@@ -154,8 +177,6 @@ const api = {
       return { id: d.id, nome: d.nome, localizacao: d.localizacao, status: st };
     });
   },
-
-  
 
   async motor(id: number) {
     const ms = await this.motores().catch(() => []);
@@ -179,5 +200,5 @@ function poll<T>(fn: () => Promise<T> | T, intervalMs: number, onData: (data: T)
   return () => { stop = true; };
 }
 
-export { api, poll };
+export { api, poll, BASE_URL };
 export default api;

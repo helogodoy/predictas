@@ -1,3 +1,4 @@
+// pages/profile.ts
 import { Sidebar } from "../components/sidebar";
 import { Topbar } from "../components/topbar";
 import { getLang, setLang, t } from "../i18n";
@@ -36,12 +37,9 @@ export function Profile() {
     <div class="main-content">
       <div class="container">
         <div class="card">
-          <div style="display:grid; grid-template-columns:100px 1fr; gap:16px; align-items:center">
-            <div style="width:100px;height:100px;border-radius:999px;background:#eee"></div>
-            <div>
-              <div style="font-size:22px; font-weight:800">${nome}</div>
-              <div style="opacity:.8">Admin | ${company}</div>
-            </div>
+          <div style="display:flex; flex-direction:column; gap:8px; align-items:flex-start">
+            <div style="font-size:22px; font-weight:800">${nome}</div>
+            <div style="opacity:.8">Admin | ${company}</div>
           </div>
 
           <div class="card" style="margin-top:16px">

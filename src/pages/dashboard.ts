@@ -18,12 +18,26 @@ function wireSidebar() {
   window.addEventListener("keydown", (e) => { if (e.key === "Escape") close(); });
 }
 
+// Pequeno beep para alertas
+function beep(f = 880, ms = 150) {
+  try {
+    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.connect(g); g.connect(ctx.destination);
+    o.type = "square"; o.frequency.value = f;
+    g.gain.setValueAtTime(0.001, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.2, ctx.currentTime + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + ms / 1000);
+    o.start(); o.stop(ctx.currentTime + ms / 1000 + 0.01);
+  } catch {}
+}
+
 let stopFns: Array<() => void> = [];
 
 // util para converter UTC → horário de Brasília
 function toBrasiliaTime(ts: string | number | Date): Date {
   const d = new Date(ts);
-  // cria novo Date com -3 horas
   return new Date(d.getTime() - 3 * 60 * 60 * 1000);
 }
 
@@ -33,6 +47,16 @@ export function Dashboard() {
   const main = `
     ${Sidebar("dashboard")}
     ${Topbar(t("page_dashboard"))}
+    <div id="statusBar" style="
+      width:100%; padding:6px 0;
+      background:rgba(50,200,100,.3);
+      text-align:center;
+      font-weight:700;
+      font-size:15px;
+      letter-spacing:.5px;
+      transition:all .3s ease;
+    ">SISTEMA NORMAL</div>
+
     <div class="main-content">
       <div class="container">
         <div class="grid kpi">
@@ -90,6 +114,33 @@ export function Dashboard() {
     const $ = (id: string) => document.getElementById(id);
     const setText = (id: string, text: string) => { const el = $(id); if (el) el.textContent = text; };
 
+    const statusBar = $("statusBar")!;
+    let blinkTimer: number | null = null;
+    let lastBeep = 0;
+
+    // função para atualizar mini status visual
+    function updateStatusVisual(level: "normal" | "atencao" | "critico") {
+      let bg = "rgba(50,200,100,.3)";
+      let text = "SISTEMA NORMAL";
+      if (level === "atencao") { bg = "rgba(255,180,40,.7)"; text = "ATENÇÃO: verifique leituras"; }
+      if (level === "critico") { bg = "rgba(255,50,50,.85)"; text = "⚠️ ALERTA CRÍTICO DETECTADO ⚠️"; }
+
+      statusBar.style.background = bg;
+      statusBar.textContent = text;
+
+      // Piscar apenas em crítico
+      if (blinkTimer) { clearInterval(blinkTimer); blinkTimer = null; statusBar.style.opacity = "1"; }
+      if (level === "critico") {
+        let on = false;
+        blinkTimer = window.setInterval(() => {
+          on = !on;
+          statusBar.style.opacity = on ? "1" : "0.45";
+        }, 600);
+        const now = Date.now();
+        if (now - lastBeep > 5000) { beep(900, 160); lastBeep = now; }
+      }
+    }
+
     let tempChart: any = null;
     let vibChart: any = null;
     const tempCanvas = $("chartTemp") as HTMLCanvasElement | null;
@@ -126,19 +177,18 @@ export function Dashboard() {
       setText("k-online", String(s.online));
       setText("k-offline", String(s.offline));
       setText("k-alerta", String(s.alerta));
+      // Atualiza alerta geral se houver alertas
+      if (s.alerta > 0) updateStatusVisual("atencao");
+      else updateStatusVisual("normal");
     }));
 
     // Tabela de alertas
     stopFns.push(poll(() => api.ultimosAlertas(), 5000, rows => {
       const html = rows.map(r => {
         const sev = r.severidade === "alta" ? "err" : r.severidade === "media" ? "warn" : "ok";
-        // corrige UTC -> horário de Brasília
         const dt = toBrasiliaTime(r.ts);
         const when = new Intl.DateTimeFormat("pt-BR", {
-          dateStyle: "short",
-          timeStyle: "medium",
-          hour12: false,
-          timeZone: "America/Sao_Paulo"
+          dateStyle: "short", timeStyle: "medium", hour12: false, timeZone: "America/Sao_Paulo"
         }).format(dt);
         return `<tr>
           <td>MTR - ${r.motorId}</td>
@@ -148,6 +198,10 @@ export function Dashboard() {
       }).join("");
       const tb = $("tb-alertas");
       if (tb) tb.innerHTML = html || `<tr><td colspan="3">${t("sem_alertas")}</td></tr>`;
+
+      // verifica se há algum "alta"
+      const temCritico = rows.some(r => r.severidade === "alta");
+      if (temCritico) updateStatusVisual("critico");
     }));
 
     // Séries + KPIs de média e máximos
@@ -159,10 +213,7 @@ export function Dashboard() {
 
       const labels = tserie.map(x =>
         new Intl.DateTimeFormat("pt-BR", {
-          hour: "2-digit",
-          minute: "2-digit",
-          hour12: false,
-          timeZone: "America/Sao_Paulo"
+          hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "America/Sao_Paulo"
         }).format(toBrasiliaTime(x.ts))
       );
 

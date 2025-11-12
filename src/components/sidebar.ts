@@ -20,7 +20,7 @@ export function Sidebar(active: "dashboard" | "motores" | "leituras" | "alertas"
         ${li("#/alertas",   t("nav_alertas"),   "alertas")}
         <hr/>
         ${li("#/profile",   t("nav_perfil"),    "perfil")}
-        ${li("#/login",     t("nav_sair"),      "perfil")}
+        ${li("#/login",     t("nav_sair"),      "sair")}
       </ul>
     </nav>
   </aside>

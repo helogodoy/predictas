@@ -1,3 +1,4 @@
+// src/pages/motores.ts
 import { Sidebar } from "../components/sidebar";
 import { Topbar } from "../components/topbar";
 import api from "../services/api";
@@ -18,7 +19,12 @@ function wireSidebar() {
 }
 
 export async function Motores() {
-  const motores = await api.motores();
+  let motores: Array<{id:number; nome:string; localizacao:string; status:string}> = [];
+  try {
+    motores = await api.motores();
+  } catch {
+    motores = [];
+  }
 
   const body = motores.map(m => {
     const statusClass = m.status === "ALERTA" ? "warn" : m.status === "OFFLINE" ? "err" : "ok";
