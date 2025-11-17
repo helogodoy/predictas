@@ -107,16 +107,15 @@ export function Dashboard() {
         </div>
 
         <!-- LINHA 2: Sensores (3 cards, gráficos maiores) -->
-        <!-- Removi grid-template inline para respeitar o CSS .grid.kpi (responsivo) -->
+        <!-- Grid responsivo controlado pelo CSS (.grid.kpi) -->
         <div class="grid kpi" style="gap:16px">
           
           <!-- TEMPERATURA -->
           <div class="card" style="text-align:center">
             <div style="font-weight:800">Temperatura</div>
             <div id="temp-atual" style="font-size:48px; font-weight:800; margin-top:12px">-- °C</div>
-            <div style="display:flex; justify-content:space-between; margin-top:4px; font-size:14px; opacity:.9">
-              <span id="temp-min">Mín: -- °C</span>
-              <span id="temp-max2">Máx: -- °C</span>
+            <div style="margin-top:4px; font-size:13px; opacity:.9">
+              Faixa ideal: 22–24 °C
             </div>
             <div style="margin-top:6px; opacity:.9; font-size:14px">
               Média 24h: <span id="temp-media" style="font-weight:700">-- °C</span>
@@ -130,9 +129,8 @@ export function Dashboard() {
           <div class="card" style="text-align:center">
             <div style="font-weight:800">Umidade</div>
             <div id="umi-atual" style="font-size:48px; font-weight:800; margin-top:12px">-- %</div>
-            <div style="display:flex; justify-content:space-between; margin-top:4px; font-size:14px; opacity:.9">
-              <span id="umi-min">Mín: -- %</span>
-              <span id="umi-max2">Máx: -- %</span>
+            <div style="margin-top:4px; font-size:13px; opacity:.9">
+              Faixa ideal: 40–45 %
             </div>
             <div style="margin-top:6px; opacity:.9; font-size:14px">
               Média 24h: <span id="umi-media" style="font-weight:700">-- %</span>
@@ -146,9 +144,8 @@ export function Dashboard() {
           <div class="card" style="text-align:center">
             <div style="font-weight:800">Vibração</div>
             <div id="vib-atual" style="font-size:48px; font-weight:800; margin-top:12px">--</div>
-            <div style="display:flex; justify-content:space-between; margin-top:4px; font-size:14px; opacity:.9">
-              <span id="vib-min">Mín: --</span>
-              <span id="vib-max2">Máx: --</span>
+            <div style="margin-top:4px; font-size:13px; opacity:.9">
+              Faixa ideal: 5–20 % ativo
             </div>
             <div style="margin-top:6px; opacity:.9; font-size:14px">
               Média 24h: <span id="vib-media" style="font-weight:700">--</span>
@@ -176,10 +173,9 @@ export function Dashboard() {
     let blinkTimer: number | null = null;
     let lastBeep = 0;
 
-    function updateStatusVisual(level: "normal" | "atencao" | "critico") {
+    function updateStatusVisual(level: "normal" | "critico") {
       let bg = "rgba(50,200,100,.3)";
       let text = "SISTEMA NORMAL";
-      if (level === "atencao") { bg = "rgba(255,180,40,.7)"; text = "ATENÇÃO: verifique leituras"; }
       if (level === "critico") { bg = "rgba(255,50,50,.85)"; text = "⚠️ ALERTA CRÍTICO DETECTADO ⚠️"; }
 
       (statusBar as HTMLElement).style.background = bg;
@@ -193,7 +189,7 @@ export function Dashboard() {
           (statusBar as HTMLElement).style.opacity = on ? "1" : "0.45";
         }, 600);
         const now = Date.now();
-        // beep a cada 2 segundos enquanto estiver em crítico
+        // beep a cada ~2 segundos enquanto estiver em crítico
         if (now - lastBeep > 2000) { beep(900, 160); lastBeep = now; }
       }
     }
@@ -247,7 +243,7 @@ export function Dashboard() {
       setText("k-online", String(s.dispositivos ?? s.sensores ?? "--"));
       setText("k-offline", "—");
       setText("k-alerta", String(s.alertas ?? 0));
-      // o “status visual” final será decidido também pelas leituras atuais (ver loadSerie)
+      // o “status visual” final será decidido pelas leituras atuais (ver loadSerie)
     }));
 
     // SÉRIES (atual, média e máx 24h) + LÓGICA DE ALERTA
@@ -296,9 +292,6 @@ export function Dashboard() {
       const maxT = tvals.length ? Math.max(...tvals) : 0;
       const maxU = uvals.length ? Math.max(...uvals) : 0;
       const maxV = vvals.length ? Math.max(...vvals) : 0;
-      const minT = tvals.length ? Math.min(...tvals) : 0;
-      const minU = uvals.length ? Math.min(...uvals) : 0;
-      const minV = vvals.length ? Math.min(...vvals) : 0;
 
       const currT = tvals.length ? tvals[tvals.length - 1] : NaN;
       const currU = uvals.length ? uvals[uvals.length - 1] : NaN;
@@ -316,14 +309,6 @@ export function Dashboard() {
       setText("umi-max",    uvals.length ? maxU.toFixed(1)   + " %" : "-- %");
       setText("vib-media",  vvals.length ? mediaV.toFixed(1)       : "--");
       setText("vib-max",    vvals.length ? maxV.toFixed(1)         : "--");
-
-      // Mínimos e máximos laterais
-      setText("temp-min", tvals.length ? `Mín: ${minT.toFixed(1)} °C` : "Mín: -- °C");
-      setText("temp-max2", tvals.length ? `Máx: ${maxT.toFixed(1)} °C` : "Máx: -- °C");
-      setText("umi-min", uvals.length ? `Mín: ${minU.toFixed(1)} %` : "Mín: -- %");
-      setText("umi-max2", uvals.length ? `Máx: ${maxU.toFixed(1)} %` : "Máx: -- %");
-      setText("vib-min", vvals.length ? `Mín: ${minV.toFixed(1)}` : "Mín: --");
-      setText("vib-max2", vvals.length ? `Máx: ${maxV.toFixed(1)}` : "Máx: --");
 
       // ========= LÓGICA DE ALERTA NO SITE (MESMOS LIMITES DO PYCHARM) =========
       const TEMP_MIN = 22.0, TEMP_MAX = 24.0;

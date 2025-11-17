@@ -1,4 +1,3 @@
-// src/pages/motor.ts
 import Chart from "chart.js/auto";
 import { Sidebar } from "../components/sidebar";
 import { Topbar } from "../components/topbar";
@@ -50,9 +49,11 @@ export function MotorDetail(motorId: number) {
     }
   } catch {}
 
+  const title = `Motor ${motorId}`;
+
   const view = `
     ${Sidebar("motores")}
-    ${Topbar(`Motor ${motorId}`, company)}
+    ${Topbar(title, company)}
     <div class="main-content">
       <div class="container">
         <div class="card">
@@ -63,23 +64,23 @@ export function MotorDetail(motorId: number) {
           <div class="kpi-cards">
             <div class="card">
               <div>Temperatura</div>
-              <div id="k-temp" style="font-size:28px; font-weight:800">-- °C</div>
-              <div id="k-temp-sub" style="opacity:.85">—</div>
+              <div id="k-temp" style="font-size:32px; font-weight:800">-- °C</div>
+              <div id="k-temp-sub" style="opacity:.85">Faixa ideal: 22–24 °C</div>
             </div>
             <div class="card">
               <div>Umidade</div>
-              <div id="k-umi" style="font-size:28px; font-weight:800">-- %</div>
-              <div id="k-umi-sub" style="opacity:.85">—</div>
+              <div id="k-umi" style="font-size:32px; font-weight:800">-- %</div>
+              <div id="k-umi-sub" style="opacity:.85">Faixa ideal: 40–45 %</div>
             </div>
             <div class="card">
               <div>Vibração (RMS)</div>
-              <div id="k-vib" style="font-size:28px; font-weight:800">--</div>
-              <div id="k-vib-sub" style="opacity:.85">—</div>
+              <div id="k-vib" style="font-size:32px; font-weight:800">--</div>
+              <div id="k-vib-sub" style="opacity:.85">Faixa ideal: 5–20 % ativo</div>
             </div>
             <div class="card">
               <div>Pico (Temp) 24h</div>
               <div id="k-pico" style="font-size:32px; font-weight:800">-- °C</div>
-              <div style="opacity:.85">—</div>
+              <div style="opacity:.85">Maior valor das últimas 24h</div>
             </div>
           </div>
 
@@ -155,12 +156,17 @@ export function MotorDetail(motorId: number) {
     let currentRange: "1h" | "7d" | "30d" = "1h";
     let blinkTimer: number | null = null;
 
-    function setAlertVisual(status: "NORMAL"|"ATENÇÃO"|"CRÍTICO") {
+    function setAlertVisual(status: "NORMAL" | "CRÍTICO", detalhe?: string) {
       const bar = $("#alertBar");
-      bar.textContent = status;
+      if (status === "CRÍTICO") {
+        bar.textContent = detalhe
+          ? `⚠️ ALERTA CRÍTICO – ${detalhe}`
+          : "⚠️ ALERTA CRÍTICO DETECTADO ⚠️";
+      } else {
+        bar.textContent = "NORMAL";
+      }
 
       let bg = "rgba(50,200,100,.35)";
-      if (status === "ATENÇÃO") bg = "rgba(255,180,40,.7)";
       if (status === "CRÍTICO") bg = "rgba(255,50,50,.85)";
       (bar as HTMLElement).style.background = bg;
 
@@ -172,7 +178,6 @@ export function MotorDetail(motorId: number) {
           (bar as HTMLElement).style.opacity = on ? "1" : "0.45";
         }, 550);
         const now = Date.now();
-        // beep a cada 2 segundos em crítico
         if (now - lastAudible > 2000) {
           beep(880, 180);
           setTimeout(() => beep(660, 160), 220);
@@ -196,11 +201,10 @@ export function MotorDetail(motorId: number) {
     async function load(janela: "1h" | "7d" | "30d" = currentRange) {
       currentRange = janela;
       try {
-        const [t, u, v, alertas] = await Promise.all([
+        const [t, u, v] = await Promise.all([
           api.temperaturaSerie(motorId, janela),
           api.umidadeSerie(motorId, janela),
           api.vibracaoSerie(motorId, janela),
-          api.alertas(20)
         ]);
 
         const labels = t.map(x => formatLabel(x.ts, janela));
@@ -224,35 +228,65 @@ export function MotorDetail(motorId: number) {
           chart.update();
         }
 
-        const lastT = t.length ? t[t.length - 1].valor : 0;
-        const lastU = u.length ? u[u.length - 1].valor : 0;
-        const lastV = v.length ? v[v.length - 1].valor : 0;
+        const currT = tvals.length ? tvals[tvals.length - 1] : NaN;
+        const currU = uvals.length ? uvals[uvals.length - 1] : NaN;
+        const currV = vvals.length ? vvals[vvals.length - 1] : NaN;
 
-        (document.getElementById("k-temp")!).textContent = `${lastT.toFixed(1)} °C`;
-        (document.getElementById("k-umi")!).textContent  = `${lastU.toFixed(1)} %`;
-        (document.getElementById("k-vib")!).textContent  = `${lastV.toFixed(1)}`;
-        (document.getElementById("k-pico")!).textContent = `${Math.max(...tvals, 0).toFixed(1)} °C`;
-        (document.getElementById("k-temp-sub")!).textContent = t.length ? "Monitorando" : "Sem dados";
-        (document.getElementById("k-umi-sub")!).textContent  = u.length ? "Monitorando" : "Sem dados";
-        (document.getElementById("k-vib-sub")!).textContent  = v.length ? "Monitorando" : "Sem dados";
+        (document.getElementById("k-temp")!).textContent =
+          Number.isFinite(currT) ? `${currT.toFixed(1)} °C` : "-- °C";
+        (document.getElementById("k-umi")!).textContent  =
+          Number.isFinite(currU) ? `${currU.toFixed(1)} %` : "-- %";
+        (document.getElementById("k-vib")!).textContent  =
+          Number.isFinite(currV) ? `${currV.toFixed(1)}`   : "--";
 
-        let status: "NORMAL"|"ATENÇÃO"|"CRÍTICO" = "NORMAL";
-        if (lastT > 95 || lastV > 90) status = "CRÍTICO";
-        else if (lastT > 80 || lastV > 75) status = "ATENÇÃO";
+        (document.getElementById("k-pico")!).textContent =
+          tvals.length ? `${Math.max(...tvals, 0).toFixed(1)} °C` : "-- °C";
+
+        const TEMP_MIN = 22.0, TEMP_MAX = 24.0;
+        const UMID_MIN = 40.0, UMID_MAX = 45.0;
+        const MOV_MIN  = 5.0,  MOV_MAX  = 20.0;
+
+        const foraFaixa = (v: number, min: number, max: number) =>
+          Number.isFinite(v) && (v < min || v > max);
+
+        const tempOff = foraFaixa(currT, TEMP_MIN, TEMP_MAX);
+        const umiOff  = foraFaixa(currU, UMID_MIN, UMID_MAX);
+        const vibOff  = foraFaixa(currV, MOV_MIN, MOV_MAX);
 
         (document.getElementById("k-temp") as HTMLElement).style.color =
-          (lastT > 95) ? "#ff4d4f" : (lastT > 80) ? "#ffcc00" : "#ffb0b0";
+          tempOff ? "#ff4d4d" : "#ffffff";
+        (document.getElementById("k-umi") as HTMLElement).style.color =
+          umiOff ? "#ff4d4d" : "#ffffff";
         (document.getElementById("k-vib") as HTMLElement).style.color =
-          (lastV > 90) ? "#ff4d4f" : (lastV > 75) ? "#ffcc00" : "#b7e3ff";
-        (document.getElementById("k-umi") as HTMLElement).style.color = "#b0ffd1";
+          vibOff ? "#ff4d4d" : "#ffffff";
 
-        setAlertVisual(status);
+        const problemas: string[] = [];
+        if (tempOff) problemas.push("Temperatura fora da faixa");
+        if (umiOff)  problemas.push("Umidade fora da faixa");
+        if (vibOff)  problemas.push("Vibração fora da faixa");
+
+        let status: "NORMAL" | "CRÍTICO" = "NORMAL";
+        let detalhe = "";
+        if (problemas.length) {
+          status = "CRÍTICO";
+          detalhe = problemas.join(" · ");
+        }
+
+        setAlertVisual(status, detalhe);
+
+        let alertas: any[] = [];
+        try {
+          alertas = await api.alertas(20);
+        } catch {
+          alertas = [];
+        }
 
         const linhas = alertas
           .filter(a => a.motorId === motorId)
           .slice(0, 10)
           .map(a => {
-            const corBadge = a.severidade === "alta" ? "err" : a.severidade === "media" ? "warn" : "ok";
+            const corBadge = a.severidade === "alta" ? "err" :
+                             a.severidade === "media" ? "warn" : "ok";
             return `
               <tr>
                 <td>${fmtTime(a.criado_em)}</td>
@@ -262,7 +296,8 @@ export function MotorDetail(motorId: number) {
               </tr>`;
           })
           .join("");
-        (document.getElementById("tb-hist")!).innerHTML = linhas || "<tr><td colspan='4'>Sem alertas recentes</td></tr>";
+        (document.getElementById("tb-hist")!).innerHTML =
+          linhas || "<tr><td colspan='4'>Sem alertas recentes</td></tr>";
 
         (document.getElementById("mloc")!).textContent =
           `Local: ${(document.getElementById("mloc")!.textContent?.split("|")[0].replace("Local: ", "").trim()) || "-"} | Último Update: ${
@@ -272,7 +307,8 @@ export function MotorDetail(motorId: number) {
 
       } catch (e) {
         console.warn("Falha ao carregar leituras/alertas:", e);
-        (document.getElementById("tb-hist")!).innerHTML = "<tr><td colspan='4'>Erro ao carregar histórico</td></tr>";
+        (document.getElementById("tb-hist")!).innerHTML =
+          "<tr><td colspan='4'>Erro ao carregar histórico</td></tr>";
       }
     }
 

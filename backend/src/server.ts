@@ -1,4 +1,3 @@
-// backend/src/server.ts
 import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -67,20 +66,19 @@ interface KpiRow extends RowDataPacket {
 // Pool MySQL (Railway)
 // ----------------------------
 const pool = mysql.createPool({
-  host: process.env.DB_HOST,                 // crossover.proxy.rlwy.net
-  port: Number(process.env.DB_PORT || 3306),// 17940
-  user: process.env.DB_USER,                // root
-  password: process.env.DB_PASSWORD,        // ****
-  database: process.env.DB_NAME,            // railway
+  host: process.env.DB_HOST,
+  port: Number(process.env.DB_PORT || 3306),
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_NAME,
   connectionLimit: 10,
 });
 
-// Teste inicial de conexão (tipado)
+// Teste inicial de conexão
 (async () => {
   try {
     const conn = await pool.getConnection();
     const [rows] = await conn.query<RowDataPacket[]>("SELECT NOW() AS agora");
-    // Access seguro com RowDataPacket
     const agora = (rows[0] as RowDataPacket)["agora"];
     console.log("✅ Conectado ao banco de dados Railway —", agora);
     conn.release();
@@ -101,7 +99,9 @@ function plusMinutes(min: number) {
   const d = new Date();
   d.setMinutes(d.getMinutes() + min);
   const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(
+    d.getDate()
+  )} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
 function auth(req: Request, res: Response, next: NextFunction) {
@@ -121,10 +121,19 @@ function auth(req: Request, res: Response, next: NextFunction) {
 // ----------------------------
 async function handleLogin(req: Request, res: Response) {
   try {
-    const { email, senha } = (req.body || {}) as { email?: string; senha?: string };
-    console.log("[LOGIN] email:", email, "senha_len:", senha ? String(senha).length : 0);
+    const { email, senha } = (req.body || {}) as {
+      email?: string;
+      senha?: string;
+    };
+    console.log(
+      "[LOGIN] email:",
+      email,
+      "senha_len:",
+      senha ? String(senha).length : 0
+    );
 
-    if (!email || !senha) return res.status(400).json({ error: "Preencha todos os campos" });
+    if (!email || !senha)
+      return res.status(400).json({ error: "Preencha todos os campos" });
 
     const [rows] = await pool.query<UserRow[]>(
       "SELECT id, email, nome, role, senha_hash FROM usuarios WHERE email = ? LIMIT 1",
@@ -135,10 +144,18 @@ async function handleLogin(req: Request, res: Response) {
     }
 
     const user = rows[0];
-    const ok = await bcrypt.compare(String(senha), String(user.senha_hash || ""));
+    const ok = await bcrypt.compare(
+      String(senha),
+      String(user.senha_hash || "")
+    );
     if (!ok) return res.status(401).json({ error: "Senha incorreta" });
 
-    const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: "8h" });
+    const token = jwt.sign(
+      { id: user.id, email: user.email, role: user.role },
+      JWT_SECRET,
+      { expiresIn: "8h" }
+    );
+
     return res.json({ token, nome: user.nome, email: user.email });
   } catch (e) {
     console.error("[/api/login] erro:", e);
@@ -150,7 +167,7 @@ app.post("/api/login", handleLogin);
 app.post("/login", handleLogin); // alias
 
 // ----------------------------
-// Esqueci / Reset de senha - usa `password_resets`
+// Esqueci / Reset de senha
 // ----------------------------
 app.post("/api/forgot", async (req, res) => {
   try {
@@ -162,7 +179,9 @@ app.post("/api/forgot", async (req, res) => {
       [email]
     );
     if (!Array.isArray(rows) || rows.length === 0) {
-      return res.json({ message: "Se o e-mail estiver cadastrado, enviaremos um link." });
+      return res.json({
+        message: "Se o e-mail estiver cadastrado, enviaremos um link.",
+      });
     }
     const user = rows[0];
 
@@ -177,7 +196,9 @@ app.post("/api/forgot", async (req, res) => {
     const resetUrl = `http://localhost:5173/#/reset?token=${token}`;
     console.log("🔗 Link de reset (dev):", resetUrl);
 
-    return res.json({ message: "Se o e-mail estiver cadastrado, enviaremos um link." });
+    return res.json({
+      message: "Se o e-mail estiver cadastrado, enviaremos um link.",
+    });
   } catch (e) {
     console.error("[/api/forgot] erro:", e);
     return res.status(500).json({ error: "Erro ao processar reset" });
@@ -187,7 +208,8 @@ app.post("/api/forgot", async (req, res) => {
 app.post("/api/reset", async (req, res) => {
   try {
     const { token, novaSenha } = req.body || {};
-    if (!token || !novaSenha) return res.status(400).json({ error: "Dados incompletos" });
+    if (!token || !novaSenha)
+      return res.status(400).json({ error: "Dados incompletos" });
 
     const [rows] = await pool.query<PasswordResetRow[]>(
       `SELECT pr.id, pr.user_id, pr.expires_at, pr.used_at
@@ -196,15 +218,22 @@ app.post("/api/reset", async (req, res) => {
         LIMIT 1`,
       [token]
     );
-    if (!Array.isArray(rows) || rows.length === 0) return res.status(400).json({ error: "Token inválido" });
+    if (!Array.isArray(rows) || rows.length === 0)
+      return res.status(400).json({ error: "Token inválido" });
 
     const pr = rows[0];
     if (pr.used_at) return res.status(400).json({ error: "Token já utilizado" });
-    if (new Date(pr.expires_at).getTime() < Date.now()) return res.status(400).json({ error: "Token expirado" });
+    if (new Date(pr.expires_at).getTime() < Date.now())
+      return res.status(400).json({ error: "Token expirado" });
 
     const hash = await bcrypt.hash(String(novaSenha), 10);
-    await pool.query("UPDATE usuarios SET senha_hash = ? WHERE id = ?", [hash, pr.user_id]);
-    await pool.query("UPDATE password_resets SET used_at = NOW() WHERE id = ?", [pr.id]);
+    await pool.query("UPDATE usuarios SET senha_hash = ? WHERE id = ?", [
+      hash,
+      pr.user_id,
+    ]);
+    await pool.query("UPDATE password_resets SET used_at = NOW() WHERE id = ?", [
+      pr.id,
+    ]);
 
     return res.json({ message: "Senha redefinida com sucesso!" });
   } catch (e) {
@@ -214,8 +243,7 @@ app.post("/api/reset", async (req, res) => {
 });
 
 // ----------------------------
-// Rotas protegidas (leem a TABELA REAL do Python: dht11_sw520_leituras)
-// colunas: id, temperatura, umidade, transicoes, percent_low, recebido_em
+// Rotas protegidas (dht11_sw520_leituras)
 // ----------------------------
 
 // KPIs / status geral
@@ -231,10 +259,10 @@ app.get("/api/status-geral", auth, async (_req: Request, res: Response) => {
     );
 
     return res.json({
-      dispositivos: 1, // placeholder
-      sensores: 2,     // DHT + SW520
+      dispositivos: 1,
+      sensores: 2,
       leituras: Number(kpi?.leituras || 0),
-      alertas: (Number(kpi?.percent_low_media || 0) > 80) ? 1 : 0,
+      alertas: Number(kpi?.percent_low_media || 0) > 80 ? 1 : 0,
     });
   } catch (e) {
     console.error("[/api/status-geral] erro:", e);
@@ -242,8 +270,7 @@ app.get("/api/status-geral", auth, async (_req: Request, res: Response) => {
   }
 });
 
-// série temporal: usa query param "metric": temperatura|umidade|vibracao
-// vibracao = percent_low (ou troque para transicoes)
+// Série temporal
 app.get("/api/leituras", auth, async (req: Request, res: Response) => {
   try {
     const limit = Math.min(Number(req.query.limit || 200), 1000);
@@ -251,7 +278,7 @@ app.get("/api/leituras", auth, async (req: Request, res: Response) => {
 
     let col = "temperatura";
     if (metric === "umidade") col = "umidade";
-    else if (metric === "vibracao") col = "percent_low"; // ou "transicoes"
+    else if (metric === "vibracao") col = "percent_low";
 
     const [rows] = await pool.query<SerieRow[]>(
       `SELECT recebido_em AS momento, ${col} AS valor
@@ -268,14 +295,14 @@ app.get("/api/leituras", auth, async (req: Request, res: Response) => {
   }
 });
 
-// lista de "motores" (placeholder para não quebrar o front)
+// lista de "motores" (placeholder)
 app.get("/api/motores", auth, async (_req: Request, res: Response) => {
   return res.json([
-    { id: 1, nome: "Motor Principal", localizacao: "Linha 1", status: "ativo" }
+    { id: 1, nome: "Motor Principal", localizacao: "Linha 1", status: "ativo" },
   ]);
 });
 
-// "Alertas" gerados a partir de regras simples sobre as leituras recentes
+// "Alertas" gerados a partir de regras simples
 app.get("/api/alertas", auth, async (req: Request, res: Response) => {
   try {
     const limit = Math.min(Number(req.query.limit || 20), 200);
@@ -297,7 +324,8 @@ app.get("/api/alertas", auth, async (req: Request, res: Response) => {
       else if (temperatura != null && temperatura > 80) nivel = "alto";
 
       if (percent_low != null && percent_low > 90) nivel = "critico";
-      else if (percent_low != null && percent_low > 75 && nivel !== "critico") nivel = "alto";
+      else if (percent_low != null && percent_low > 75 && nivel !== "critico")
+        nivel = "alto";
 
       return {
         id: r["leitura_id"] as number,
@@ -305,7 +333,9 @@ app.get("/api/alertas", auth, async (req: Request, res: Response) => {
         sensor_id: 1,
         tipo: "temperatura",
         nivel,
-        mensagem: `Temp=${temperatura ?? "-"} | Umid=${umidade ?? "-"} | %LOW=${percent_low ?? "-"}`,
+        mensagem: `Temp=${temperatura ?? "-"} | Umid=${
+          umidade ?? "-"
+        } | %LOW=${percent_low ?? "-"}`,
         criado_em: r["recebido_em"],
       };
     });
