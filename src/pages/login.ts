@@ -1,4 +1,4 @@
-import api from "../services/api";
+import api, { LoginResponse } from "../services/api";
 
 export function Login() {
   const html = `
@@ -15,12 +15,11 @@ export function Login() {
           <label class="label" for="senha">Senha:</label>
           <div style="display:flex; align-items:center; gap:8px">
             <input id="senha" type="password" class="input" placeholder="••••••••" required />
-            <!-- 👇 Trocar o botão pelo bloco abaixo -->
             <button id="togglePwd" type="button"
               class="btn btn-outline"
               aria-label="Mostrar senha"
               style="padding:8px; display:flex; align-items:center; justify-content:center; width:40px; height:40px">
-              <img id="eyeIcon" src="/assets/eye.png" alt="Mostrar senha" width="20" height="20" />
+              <img id="eyeIcon" src="./assets/eye.png" alt="Mostrar senha" width="20" height="20" />
             </button>
           </div>
         </div>
@@ -42,38 +41,49 @@ export function Login() {
     const eyeIcon = document.getElementById("eyeIcon") as HTMLImageElement | null;
     const senhaInput = document.getElementById("senha") as HTMLInputElement | null;
 
+    // Toggle mostrar/ocultar senha
     toggle?.addEventListener("click", () => {
       if (!senhaInput || !eyeIcon || !toggle) return;
       const isPwd = senhaInput.type === "password";
       senhaInput.type = isPwd ? "text" : "password";
 
-      // Alterna a imagem e a acessibilidade
-      eyeIcon.src = isPwd ? "/assets/eyeclosed.png" : "/assets/eye.png";
+      eyeIcon.src = isPwd ? "./assets/eyeclosed.png" : "./assets/eye.png";
       eyeIcon.alt = isPwd ? "Ocultar senha" : "Mostrar senha";
       toggle.setAttribute("aria-label", isPwd ? "Ocultar senha" : "Mostrar senha");
       toggle.setAttribute("aria-pressed", String(isPwd));
     });
 
+    // Submit do login
     form?.addEventListener("submit", async (e) => {
       e.preventDefault();
-      if (errorMsg) { errorMsg.style.display = "none"; }
-      if (btnLogin) { btnLogin.disabled = true; }
+      if (errorMsg) errorMsg.style.display = "none";
+      if (btnLogin) btnLogin.disabled = true;
 
       try {
-        const email = (document.getElementById("login") as HTMLInputElement).value.trim();
-        const password = (document.getElementById("senha") as HTMLInputElement).value;
+        const emailInput = document.getElementById("login") as HTMLInputElement | null;
+        const senhaInput2 = document.getElementById("senha") as HTMLInputElement | null;
 
-        const { user } = await api.login(email, password);
-        localStorage.setItem("predictas_user", JSON.stringify(user));
-        localStorage.setItem("predictas_token", user.token);
+        const email = emailInput?.value.trim() || "";
+        const password = senhaInput2?.value || "";
+
+        const resp: LoginResponse = await api.login(email, password);
+
+        // Garante que o token e o usuário fiquem salvos
+        localStorage.setItem("predictas_token", resp.token);
+        localStorage.setItem(
+          "predictas_user",
+          JSON.stringify({ email: resp.email, nome: resp.nome })
+        );
+
         window.location.hash = "#/dashboard";
       } catch (error: any) {
         if (errorMsg) {
-          errorMsg.textContent = error.message || "Erro ao fazer login. Tente novamente.";
+          errorMsg.textContent =
+            error?.message || "Erro ao fazer login. Tente novamente.";
           errorMsg.style.display = "block";
         }
       } finally {
-        if (btnLogin) { btnLogin.disabled = false; }
+        if (btnLogin) btnLogin.disabled = false;
       }
     });
   }, 0);

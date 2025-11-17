@@ -38,9 +38,9 @@ export function Leituras() {
                 <tr>
                   <th>ID</th>
                   <th>${t("motores")}</th>
-                  <th>${t("temperatura")}</th>
+                  <th>${t("Temperatura")}</th>
                   <th>Umidade</th>
-                  <th>${t("vibracao")}</th>
+                  <th>${t("Vibração")}</th>
                   <th>${t("data_hora")}</th>
                 </tr>
               </thead>
