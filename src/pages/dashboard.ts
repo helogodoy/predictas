@@ -18,7 +18,7 @@ function wireSidebar() {
   window.addEventListener("keydown", (e) => { if (e.key === "Escape") close(); });
 }
 
-// Pequeno beep para alertas
+// Pequeno beep para alertas críticos
 function beep(f = 880, ms = 150) {
   try {
     const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -42,7 +42,9 @@ function toBrasiliaTime(ts: string | number | Date): Date {
 }
 
 export function Dashboard() {
-  stopFns.forEach(f => f()); stopFns = [];
+  // limpa pools anteriores
+  stopFns.forEach(f => f());
+  stopFns = [];
 
   const main = `
     ${Sidebar("dashboard")}
@@ -59,58 +61,91 @@ export function Dashboard() {
 
     <div class="main-content">
       <div class="container">
-        <div class="grid kpi">
-          <div class="card"><div style="font-weight:800">${t("status_geral")}</div>
-            <div class="grid" style="grid-template-columns:repeat(3,1fr); gap:8px; margin-top:10px">
-              <div><div class="kpi-value" id="k-online">--</div><div class="kpi-sub">${t("online")}</div></div>
-              <div><div class="kpi-value" id="k-offline">--</div><div class="kpi-sub">${t("offline")}</div></div>
-              <div><div class="kpi-value" id="k-alerta">--</div><div class="kpi-sub">${t("alerta")}</div></div>
-            </div>
-          </div>
 
-          <div class="card" style="text-align:center">
-            <div style="font-weight:800">${t("temperatura_media")}</div>
-            <div id="temp-media" style="font-size:48px; font-weight:800; margin-top:12px">-- °C</div>
-            <div style="margin-top:6px; opacity:.9">Máx 24h: <span id="temp-max" style="font-weight:800; font-size:26px">-- °C</span></div>
-            <div style="height:260px; margin-top:8px"><canvas id="chartTemp"></canvas></div>
-          </div>
-
-          <div class="card" style="text-align:center">
-            <div style="font-weight:800">Umidade Média</div>
-            <div id="umi-media" style="font-size:42px; font-weight:800; margin-top:12px">-- %</div>
-            <div style="margin-top:6px; opacity:.9">Máx 24h: <span id="umi-max" style="font-weight:800; font-size:26px">-- %</span></div>
-            <div style="height:260px; margin-top:8px"><canvas id="chartUmi"></canvas></div>
-          </div>
-
-          <div class="card" style="text-align:center">
-            <div style="font-weight:800">${t("vibracao_media")}</div>
-            <div id="vib-media" style="font-size:36px; font-weight:800; margin-top:12px">--</div>
-            <div style="margin-top:6px; opacity:.9">Máx 24h: <span id="vib-max" style="font-weight:800; font-size:26px">--</span></div>
-            <div style="height:320px; margin-top:8px"><canvas id="chartVib"></canvas></div>
-          </div>
-        </div>
-
-        <div class="grid" style="grid-template-columns:.8fr 1.2fr; margin-top:18px">
+        <!-- LINHA 1: Status Geral + Motores (visão de parque) -->
+        <div class="grid" style="grid-template-columns:0.9fr 2.1fr; gap:16px; margin-bottom:18px">
+          
+          <!-- STATUS GERAL -->
           <div class="card">
-            <div style="font-weight:800; margin-bottom:8px">${t("ultimos_alertas")}</div>
-            <div class="table-wrap">
-              <table>
-                <thead><tr><th>Alerta</th><th>${t("data_hora")}</th><th>${t("criticidade")}</th></tr></thead>
-                <tbody id="tb-alertas"></tbody>
-              </table>
+            <div style="font-weight:800">${t("status_geral")}</div>
+            <div class="grid" style="grid-template-columns:repeat(3,1fr); gap:8px; margin-top:18px">
+              <div style="text-align:center">
+                <div class="kpi-value" id="k-online">--</div>
+                <div class="kpi-sub" style="color:#5CFF8A; font-weight:700">${t("online")}</div>
+              </div>
+              <div style="text-align:center">
+                <div class="kpi-value" id="k-offline">—</div>
+                <div class="kpi-sub" style="opacity:.8">${t("offline")}</div>
+              </div>
+              <div style="text-align:center">
+                <div class="kpi-value" id="k-alerta">0</div>
+                <div class="kpi-sub" style="color:#ffdd57; font-weight:700">${t("alerta")}</div>
+              </div>
             </div>
           </div>
 
+          <!-- MOTORES -->
           <div class="card">
             <div style="font-weight:800; margin-bottom:8px">${t("motores")}</div>
             <div class="table-wrap">
               <table>
-                <thead><tr><th>ID</th><th>${t("motores")}</th><th>Local</th><th>Status</th><th></th></tr></thead>
-                <tbody id="tb-motores"></tbody>
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>${t("motores")}</th>
+                    <th>Local</th>
+                    <th>Status</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="tb-motores">
+                  <tr><td colspan="5">${t("carregando")}...</td></tr>
+                </tbody>
               </table>
             </div>
           </div>
         </div>
+
+        <!-- LINHA 2: Sensores (3 cards, gráficos maiores) -->
+        <div class="grid kpi" style="grid-template-columns:repeat(3, minmax(0,1fr)); gap:16px">
+          
+          <!-- TEMPERATURA -->
+          <div class="card" style="text-align:center">
+            <div style="font-weight:800">Temperatura</div>
+            <div id="temp-atual" style="font-size:48px; font-weight:800; margin-top:12px">-- °C</div>
+            <div style="margin-top:6px; opacity:.9; font-size:14px">
+              Média 24h: <span id="temp-media" style="font-weight:700">-- °C</span>
+              &nbsp;|&nbsp;
+              Máx 24h: <span id="temp-max" style="font-weight:700">-- °C</span>
+            </div>
+            <div style="height:260px; margin-top:8px"><canvas id="chartTemp"></canvas></div>
+          </div>
+
+          <!-- UMIDADE -->
+          <div class="card" style="text-align:center">
+            <div style="font-weight:800">Umidade</div>
+            <div id="umi-atual" style="font-size:42px; font-weight:800; margin-top:12px">-- %</div>
+            <div style="margin-top:6px; opacity:.9; font-size:14px">
+              Média 24h: <span id="umi-media" style="font-weight:700">-- %</span>
+              &nbsp;|&nbsp;
+              Máx 24h: <span id="umi-max" style="font-weight:700">-- %</span>
+            </div>
+            <div style="height:260px; margin-top:8px"><canvas id="chartUmi"></canvas></div>
+          </div>
+
+          <!-- VIBRAÇÃO -->
+          <div class="card" style="text-align:center">
+            <div style="font-weight:800">Vibração</div>
+            <div id="vib-atual" style="font-size:36px; font-weight:800; margin-top:12px">--</div>
+            <div style="margin-top:6px; opacity:.9; font-size:14px">
+              Média 24h: <span id="vib-media" style="font-weight:700">--</span>
+              &nbsp;|&nbsp;
+              Máx 24h: <span id="vib-max" style="font-weight:700">--</span>
+            </div>
+            <div style="height:260px; margin-top:8px"><canvas id="chartVib"></canvas></div>
+          </div>
+        </div>
+
       </div>
     </div>
   `;
@@ -119,7 +154,10 @@ export function Dashboard() {
     wireSidebar();
 
     const $ = (id: string) => document.getElementById(id);
-    const setText = (id: string, text: string) => { const el = $(id); if (el) el.textContent = text; };
+    const setText = (id: string, text: string) => {
+      const el = $(id);
+      if (el) el.textContent = text;
+    };
 
     const statusBar = $("statusBar")!;
     let blinkTimer: number | null = null;
@@ -158,7 +196,10 @@ export function Dashboard() {
       maintainAspectRatio: false,
       interaction: { intersect: false, mode: "nearest" as const },
       plugins: { legend: { display: false }, decimation: { enabled: true } },
-      scales: { x: { grid: { display: false } }, y: { beginAtZero: true, grid: { color: "rgba(255,255,255,.1)" } } },
+      scales: {
+        x: { grid: { display: false } },
+        y: { beginAtZero: true, grid: { color: "rgba(255,255,255,.1)" } }
+      },
       elements: { point: { radius: 0 } }
     };
 
@@ -187,8 +228,8 @@ export function Dashboard() {
       });
     }
 
-    // KPIs — usando statusGeral()
-    stopFns.push(poll(api.statusGeral, 5000, s => {
+    // STATUS GERAL
+    stopFns.push(poll(api.statusGeral, 5000, (s) => {
       setText("k-online", String(s.dispositivos ?? s.sensores ?? "--"));
       setText("k-offline", "—");
       setText("k-alerta", String(s.alertas ?? 0));
@@ -196,28 +237,7 @@ export function Dashboard() {
       else updateStatusVisual("normal");
     }));
 
-    // Tabela de alertas (usa api.alertas)
-    stopFns.push(poll(() => api.alertas(20), 5000, rows => {
-      const html = rows.map(r => {
-        const sev = r.severidade === "alta" ? "err" : r.severidade === "media" ? "warn" : "ok";
-        const dt = toBrasiliaTime(r.criado_em);
-        const when = new Intl.DateTimeFormat("pt-BR", {
-          dateStyle: "short", timeStyle: "medium", hour12: false, timeZone: "America/Sao_Paulo"
-        }).format(dt);
-        return `<tr>
-          <td>MTR - ${r.motorId || "-"}</td>
-          <td>${when}</td>
-          <td><span class="badge ${sev}">${r.severidade[0].toUpperCase() + r.severidade.slice(1)}</span></td>
-        </tr>`;
-      }).join("");
-      const tb = document.getElementById("tb-alertas");
-      if (tb) tb.innerHTML = html || `<tr><td colspan="3">${t("sem_alertas")}</td></tr>`;
-
-      const temCritico = rows.some(r => r.severidade === "alta");
-      if (temCritico) updateStatusVisual("critico");
-    }));
-
-    // Séries + KPIs de média e máximos (inclui Umidade)
+    // SÉRIES (atual, média e máx 24h)
     async function loadSerie() {
       const [tserie, userie, vserie] = await Promise.all([
         api.temperaturaSerie(1, "24h"),
@@ -238,19 +258,22 @@ export function Dashboard() {
       if (tempChart) {
         tempChart.data.labels = labels;
         tempChart.data.datasets[0].data = tvals;
-        (tempChart.options.scales as any).y.suggestedMax = Math.max(Math.ceil((Math.max(...tvals, 0) + 5) / 5) * 5, 10);
+        (tempChart.options.scales as any).y.suggestedMax =
+          Math.max(Math.ceil((Math.max(...tvals, 0) + 5) / 5) * 5, 10);
         tempChart.update();
       }
       if (umiChart) {
         umiChart.data.labels = labels;
         umiChart.data.datasets[0].data = uvals;
-        (umiChart.options.scales as any).y.suggestedMax = Math.max(Math.ceil((Math.max(...uvals, 0) + 5) / 5) * 5, 10);
+        (umiChart.options.scales as any).y.suggestedMax =
+          Math.max(Math.ceil((Math.max(...uvals, 0) + 5) / 5) * 5, 10);
         umiChart.update();
       }
       if (vibChart) {
         vibChart.data.labels = labels;
         vibChart.data.datasets[0].data = vvals;
-        (vibChart.options.scales as any).y.suggestedMax = Math.max(Math.ceil((Math.max(...vvals, 0) + 1) / 1) * 1, 5);
+        (vibChart.options.scales as any).y.suggestedMax =
+          Math.max(Math.ceil((Math.max(...vvals, 0) + 1) / 1) * 1, 5);
         vibChart.update();
       }
 
@@ -261,30 +284,43 @@ export function Dashboard() {
       const maxU = uvals.length ? Math.max(...uvals) : 0;
       const maxV = vvals.length ? Math.max(...vvals) : 0;
 
-      setText("temp-media", (mediaT ? mediaT.toFixed(1) : "--") + " °C");
-      setText("temp-max",   (maxT ? maxT.toFixed(1)   : "--") + " °C");
-      setText("umi-media",  (mediaU ? mediaU.toFixed(1) : "--") + " %");
-      setText("umi-max",    (maxU ? maxU.toFixed(1)   : "--") + " %");
-      setText("vib-media",  (mediaV ? mediaV.toFixed(1) : "--"));
-      setText("vib-max",    (maxV ? maxV.toFixed(1)   : "--"));
+      const currT = tvals.length ? tvals[tvals.length - 1] : 0;
+      const currU = uvals.length ? uvals[uvals.length - 1] : 0;
+      const currV = vvals.length ? vvals[vvals.length - 1] : 0;
+
+      // Valores atuais em destaque
+      setText("temp-atual", (currT ? currT.toFixed(1) : "--") + " °C");
+      setText("umi-atual",  (currU ? currU.toFixed(1) : "--") + " %");
+      setText("vib-atual",  (currV ? currV.toFixed(1) : "--"));
+
+      // Médias e máximas 24h
+      setText("temp-media", mediaT ? mediaT.toFixed(1) + " °C" : "-- °C");
+      setText("temp-max",   maxT ? maxT.toFixed(1)   + " °C" : "-- °C");
+      setText("umi-media",  mediaU ? mediaU.toFixed(1) + " %" : "-- %");
+      setText("umi-max",    maxU ? maxU.toFixed(1)   + " %" : "-- %");
+      setText("vib-media",  mediaV ? mediaV.toFixed(1) : "--");
+      setText("vib-max",    maxV ? maxV.toFixed(1)   : "--");
     }
 
     await loadSerie();
     stopFns.push(poll(loadSerie, 5000, () => {}));
 
-    // Motores
+    // MOTORES
     const motores = await api.motores().catch(() => []);
     const tbMotores = document.getElementById("tb-motores");
     if (tbMotores) {
-      tbMotores.innerHTML = motores.map((m: any) => {
-        const st = String(m.status || "online").toUpperCase();
-        const statusClass = st === "ALERTA" ? "warn" : st === "OFFLINE" ? "err" : "ok";
-        return `<tr>
-          <td>${m.id}</td><td>${m.nome}</td><td>${m.localizacao || "-"}</td>
-          <td><span class="badge ${statusClass}">${st}</span></td>
-          <td><a class="link" href="#/motor/${m.id}">Abrir</a></td>
-        </tr>`;
-      }).join("") || `<tr><td colspan="5">Nenhum dispositivo</td></tr>`;
+      tbMotores.innerHTML =
+        motores.map((m: any) => {
+          const st = String(m.status || "online").toUpperCase();
+          const statusClass = st === "ALERTA" ? "warn" : st === "OFFLINE" ? "err" : "ok";
+          return `<tr>
+            <td>${m.id}</td>
+            <td>${m.nome}</td>
+            <td>${m.localizacao || "-"}</td>
+            <td><span class="badge ${statusClass}">${st}</span></td>
+            <td><a class="link" href="#/motor/${m.id}">${t("abrir") ?? "Abrir"}</a></td>
+          </tr>`;
+        }).join("") || `<tr><td colspan="5">Nenhum dispositivo</td></tr>`;
     }
   }, 0);
 

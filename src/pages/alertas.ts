@@ -31,7 +31,10 @@ export function Alertas() {
     <div class="main-content">
       <div class="container">
         <div class="card">
-          <div style="font-weight:800; margin-bottom:8px">${t("ultimos_alertas")}</div>
+          <div style="font-weight:800; margin-bottom:4px">${t("ultimos_alertas")}</div>
+          <div style="opacity:.8; font-size:13px; margin-bottom:10px">
+            Histórico de alertas gerados automaticamente quando as leituras saem das faixas configuradas.
+          </div>
           <div class="table-wrap">
             <table style="width:100%; text-align:center; border-collapse:collapse;">
               <thead>
@@ -58,7 +61,13 @@ export function Alertas() {
 
     async function load() {
       try {
-        const rows = await api.alertas(50).catch(() => []);
+        let rows = await api.alertas(50).catch(() => []);
+
+        // garante ordenação do mais recente para o mais antigo
+        rows = rows.sort((a: any, b: any) =>
+          new Date(b.criado_em).getTime() - new Date(a.criado_em).getTime()
+        );
+
         const html = rows.map((r: any) => {
           const sev = r.severidade === "alta" ? "err" : r.severidade === "media" ? "warn" : "ok";
           const dt = toBrasiliaTime(r.criado_em);
@@ -68,14 +77,17 @@ export function Alertas() {
             hour12: false,
             timeZone: "America/Sao_Paulo",
           }).format(dt);
+          const sevLabel = (r.severidade ?? "baixa");
+          const sevTxt = sevLabel.charAt(0).toUpperCase() + sevLabel.slice(1);
           return `<tr>
             <td>${r.motorId ? `MTR - ${r.motorId}` : "-"}</td>
             <td>${r.tipo ?? "-"}</td>
             <td>${r.valor ?? "-"}</td>
             <td>${when}</td>
-            <td><span class="badge ${sev}">${(r.severidade ?? "Baixa").charAt(0).toUpperCase() + (r.severidade ?? "Baixa").slice(1)}</span></td>
+            <td><span class="badge ${sev}">${sevTxt}</span></td>
           </tr>`;
         }).join("");
+
         $("tb-alertas").innerHTML = html || `<tr><td colspan="5">${t("sem_alertas")}</td></tr>`;
       } catch (e) {
         $("tb-alertas").innerHTML = `<tr><td colspan="5">${t("erro_carregar") ?? "Erro ao carregar"}</td></tr>`;
