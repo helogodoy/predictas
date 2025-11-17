@@ -24,7 +24,7 @@ body{
 }
 
 /* ====== Utilitários ====== */
-.container{max-width:1200px;margin-inline:auto;padding:24px}
+.container{max-width:1400px;margin-inline:auto;padding:24px}
 .card{background:var(--panel); border:1px solid rgba(255,255,255,.08); border-radius:20px; padding:18px; box-shadow:0 10px 30px rgba(0,0,0,.25)}
 .btn{display:inline-block; padding:14px 28px; border-radius:999px; border:none; background:#80003c; color:#fff; font-weight:700; letter-spacing:2px; text-transform:uppercase; cursor:pointer}
 .btn:disabled{opacity:.6; cursor:not-allowed}
