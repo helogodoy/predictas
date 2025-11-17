@@ -14,29 +14,36 @@ function abs(url: string) {
 }
 
 // ===== Helpers HTTP =====
-async function postJSON<T>(url: string, body: unknown, token?: string): Promise<T> {
+async function getJSON<T>(url: string, token?: string) {
   const res = await fetch(abs(url), {
-    method: "POST",
     headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {})
+      "Accept": "application/json",
+      ...(token ? { "Authorization": `Bearer ${token}` } : {})
     },
-    body: JSON.stringify(body)
+    credentials: "include",
   });
   if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error((err as any).error || `HTTP ${res.status}`);
+    let err: any;
+    try { err = await res.json(); } catch {}
+    throw new Error((err as any)?.error || `HTTP ${res.status}`);
   }
   return res.json() as Promise<T>;
 }
 
-async function getJSON<T>(url: string, token?: string): Promise<T> {
+async function postJSON<T>(url: string, body: any, token?: string) {
   const res = await fetch(abs(url), {
-    headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) }
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { "Authorization": `Bearer ${token}` } : {})
+    },
+    body: JSON.stringify(body),
+    credentials: "include",
   });
   if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error((err as any).error || `HTTP ${res.status}`);
+    let err: any;
+    try { err = await res.json(); } catch {}
+    throw new Error((err as any)?.error || `HTTP ${res.status}`);
   }
   return res.json() as Promise<T>;
 }
@@ -57,75 +64,50 @@ export function fmtDateTime(d: Date | string | number) {
 export type LoginResponse = { token: string; nome: string; email: string };
 export type User = { token: string; nome: string; email: string };
 
-type StatusGeral = { dispositivos: number; sensores: number; leituras: number; alertas: number };
+export type StatusGeral = { dispositivos: number; sensores: number; leituras: number; alertas: number };
 
 type AlertaApi = {
   id: number;
   leitura_id: number;
   sensor_id: number;
-  tipo: "temperatura" | "vibracao" | "outro";
+  tipo: "temperatura" | "vibracao" | "umidade" | "outro";
   nivel: "baixo" | "normal" | "alto" | "critico";
   mensagem: string;
   criado_em: string;
 };
 
-export type AlertaUI = {
-  id: number;
-  motorId: number;
-  tipo: string;
-  valor: number;
-  limite: number | string;
-  severidade: "baixa" | "media" | "alta";
-  status: string;
-  criado_em: string; // 🔁 incluído para o histórico
-};
+export type SerieRow = { ts: string; valor: number };
 
-type SerieRow = { ts: string; valor: number };
-
-// ===== API =====
 const api = {
-  // LOGIN
-  async login(email: string, password: string): Promise<{ user: User }> {
-    const data = await postJSON<LoginResponse>("/api/login", { email, senha: password });
-    const user: User = { token: data.token, nome: data.nome, email: data.email };
-    try {
-      localStorage.setItem("predictas_token", user.token);
-      localStorage.setItem("predictas_user", JSON.stringify(user));
-    } catch {}
-    return { user };
+  // AUTH
+  async login(email: string, senha: string): Promise<LoginResponse> {
+    const r = await postJSON<LoginResponse>("/api/login", { email, senha });
+    localStorage.setItem("predictas_token", r.token);
+    localStorage.setItem("predictas_user", JSON.stringify({ email: r.email, nome: r.nome }));
+    return r;
   },
 
-  // STATUS GERAL
-  async status(): Promise<{ online: number; offline: number; alerta: number }> {
+  // KPIs
+  async statusGeral(): Promise<StatusGeral> {
     const token = localStorage.getItem("predictas_token") || undefined;
-    const d = await getJSON<StatusGeral>("/api/status-geral", token);
-    return { online: Number(d.dispositivos ?? 0), offline: 0, alerta: Number(d.alertas ?? 0) };
+    return getJSON<StatusGeral>("/api/status-geral", token);
   },
 
   // ALERTAS
-  async ultimosAlertas(limit = 20): Promise<Array<{ motorId: number; ts: string; severidade: "baixa" | "media" | "alta" }>> {
+  async alertas(limit = 20): Promise<{
+    id: number; motorId: number; tipo: string; valor: number | string; limite: number | string; severidade: "baixa" | "media" | "alta"; status: string; criado_em: string;
+  }[]> {
     const token = localStorage.getItem("predictas_token") || undefined;
-    const rows = await getJSON<AlertaApi[]>("/api/alertas?limit=" + limit, token);
+    const rows = await getJSON<AlertaApi[]>(`/api/alertas?limit=${limit}`, token);
     return rows.map((r) => {
-      let sev: "baixa" | "media" | "alta" = "baixa";
-      if (r.nivel === "critico") sev = "alta";
-      else if (r.nivel === "alto") sev = "media";
-      return { motorId: Number(r.sensor_id) || 0, ts: r.criado_em, severidade: sev };
-    });
-  },
-
-  async alertas(limit = 50): Promise<AlertaUI[]> {
-    const token = localStorage.getItem("predictas_token") || undefined;
-    const rows = await getJSON<AlertaApi[]>("/api/alertas?limit=" + limit, token);
-
-    return rows.map((r) => {
-      let sev: "baixa" | "media" | "alta" = "baixa";
-      if (r.nivel === "critico") sev = "alta";
-      else if (r.nivel === "alto") sev = "media";
-
-      let valor = 0;
-      const m = r.mensagem?.match(/valor\s*=\s*([0-9]+(?:\.[0-9]+)?)/i);
+      // tenta extrair valor numérico da mensagem
+      let valor: number | string = "-";
+      const m = r.mensagem?.match(/([0-9]+(?:\.[0-9]+)?)/);
       if (m) valor = Number(m[1]);
+
+      const tipo = r.tipo || "outro";
+      const sev: "baixa" | "media" | "alta" =
+        r.nivel === "critico" ? "alta" : r.nivel === "alto" ? "media" : "baixa";
 
       let limite: number | string = "-";
       const mx = r.mensagem?.match(/max\s*=\s*([0-9]+(?:\.[0-9]+)?)/i);
@@ -136,12 +118,12 @@ const api = {
       return {
         id: r.id,
         motorId: Number(r.sensor_id) || 0,
-        tipo: r.tipo,
+        tipo,
         valor,
         limite,
         severidade: sev,
         status: r.nivel.toUpperCase(),
-        criado_em: r.criado_em, // 🔁 mapeado do backend
+        criado_em: r.criado_em,
       };
     });
   },
@@ -153,39 +135,28 @@ const api = {
     return rows.reverse().map((r) => ({ ts: r.momento, valor: Number(r.valor) }));
   },
 
+  async umidadeSerie(_sensorId: number, _range: "1h" | "7d" | "30d" | "24h" = "1h"): Promise<SerieRow[]> {
+    const token = localStorage.getItem("predictas_token") || undefined;
+    const rows = await getJSON<any[]>(`/api/leituras?metric=umidade&limit=120`, token);
+    return rows.reverse().map((r) => ({ ts: r.momento, valor: Number(r.valor) }));
+  },
+
   async vibracaoSerie(_sensorId: number, _range: "1h" | "7d" | "30d" | "24h" = "1h"): Promise<SerieRow[]> {
     const token = localStorage.getItem("predictas_token") || undefined;
     const rows = await getJSON<any[]>(`/api/leituras?metric=vibracao&limit=120`, token);
     return rows.reverse().map((r) => ({ ts: r.momento, valor: Number(r.valor) }));
   },
 
-  async leituras(_sensorId: number, tipo: "temperatura" | "vibracao"): Promise<SerieRow[]> {
+  // LISTAS
+  async motores(): Promise<any[]> {
     const token = localStorage.getItem("predictas_token") || undefined;
-    const metric = tipo === "vibracao" ? "vibracao" : "temperatura";
-    const rows = await getJSON<any[]>(`/api/leituras?metric=${metric}&limit=120`, token);
-    return rows.reverse().map((r) => ({ ts: r.momento, valor: Number(r.valor) }));
+    return getJSON<any[]>(`/api/motores`, token);
   },
 
-  // MOTORES
-  async motores() {
+  async motor(id: number): Promise<any> {
     const token = localStorage.getItem("predictas_token") || undefined;
-    const rows = await getJSON<any[]>(`/api/motores`, token);
-    return rows.map((d) => {
-      let st = "ONLINE";
-      if (String(d.status).toLowerCase() === "manutencao") st = "ALERTA";
-      if (String(d.status).toLowerCase() === "inativo") st = "OFFLINE";
-      return { id: d.id, nome: d.nome, localizacao: d.localizacao, status: st };
-    });
+    return getJSON<any>(`/api/motores/${id}`, token);
   },
-
-  async motor(id: number) {
-    const ms = await this.motores().catch(() => []);
-    return ms.find((m) => m.id === id) || { id, nome: `Motor ${id}`, localizacao: "--", status: "ONLINE" };
-  },
-
-  // Esqueci/Reset
-  async forgot(email: string): Promise<void> { await postJSON("/api/forgot", { email }); },
-  async reset(token: string, novaSenha: string): Promise<void> { await postJSON("/api/reset", { token, novaSenha }); }
 };
 
 // ===== Poll util =====

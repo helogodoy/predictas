@@ -58,10 +58,10 @@ export function Alertas() {
 
     async function load() {
       try {
-        const rows = await api.ultimosAlertas().catch(() => []);
+        const rows = await api.alertas(50).catch(() => []);
         const html = rows.map((r: any) => {
           const sev = r.severidade === "alta" ? "err" : r.severidade === "media" ? "warn" : "ok";
-          const dt = toBrasiliaTime(r.ts ?? r.criado_em ?? r.data);
+          const dt = toBrasiliaTime(r.criado_em);
           const when = new Intl.DateTimeFormat("pt-BR", {
             dateStyle: "short",
             timeStyle: "medium",
