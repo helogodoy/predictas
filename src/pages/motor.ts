@@ -113,8 +113,9 @@ export function MotorDetail(motorId: number) {
     const $ = (id: string) => document.getElementById(id)!;
 
     try {
-      const m = await api.motor(motorId).catch(() => ({ nome: `Motor ${motorId}`, localizacao: "--" } as any)) 
-                || { nome: `Motor ${motorId}`, localizacao: "--" };
+      const m = await api.motor(motorId).catch(
+        () => ({ nome: `Motor ${motorId}`, localizacao: "--" } as any)
+      ) || { nome: `Motor ${motorId}`, localizacao: "--" };
       $("#mtitle").textContent = `${(m as any).nome}`;
       $("#mloc").textContent =
         `Local: ${(m as any).localizacao || "-"} | Último Update: ${
@@ -171,7 +172,12 @@ export function MotorDetail(motorId: number) {
           (bar as HTMLElement).style.opacity = on ? "1" : "0.45";
         }, 550);
         const now = Date.now();
-        if (now - lastAudible > 5000) { beep(880, 180); setTimeout(()=>beep(660,160),220); lastAudible = now; }
+        // beep a cada 2 segundos em crítico
+        if (now - lastAudible > 2000) {
+          beep(880, 180);
+          setTimeout(() => beep(660, 160), 220);
+          lastAudible = now;
+        }
       }
     }
 
