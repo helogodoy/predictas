@@ -57,7 +57,6 @@ export function MotorDetail(motorId: number) {
     <div class="main-content">
       <div class="container">
         <div class="card">
-          <div class="critical-bar" id="alertBar">NORMAL</div>
           <h2 id="mtitle" style="margin:0 0 6px 0">MTR ${motorId}</h2>
           <div id="mloc" style="opacity:.9; margin-bottom:12px">Local: -- | Último Update: --</div>
 
@@ -201,32 +200,46 @@ export function MotorDetail(motorId: number) {
     async function load(janela: "1h" | "7d" | "30d" = currentRange) {
       currentRange = janela;
       try {
-        const [t, u, v] = await Promise.all([
+        // 1) Série para o GRÁFICO (respeita a aba 1h / 7d / 30d)
+        const [tJan, uJan, vJan] = await Promise.all([
           api.temperaturaSerie(motorId, janela),
           api.umidadeSerie(motorId, janela),
           api.vibracaoSerie(motorId, janela),
         ]);
 
-        const labels = t.map(x => formatLabel(x.ts, janela));
-        const tvals = t.map(x => Number(x.valor) || 0);
-        const uvals = u.map(x => Number(x.valor) || 0);
-        const vvals = v.map(x => Number(x.valor) || 0);
+        // 2) Série FIXA de 24h para KPIs + alerta → igual ao Dashboard
+        const [t24, u24, v24] = await Promise.all([
+          api.temperaturaSerie(motorId, "24h"),
+          api.umidadeSerie(motorId, "24h"),
+          api.vibracaoSerie(motorId, "24h"),
+        ]);
+
+        // Atualiza gráfico com a janela selecionada
+        const labels = tJan.map(x => formatLabel(x.ts, janela));
+        const tvalsJan = tJan.map(x => Number(x.valor) || 0);
+        const uvalsJan = uJan.map(x => Number(x.valor) || 0);
+        const vvalsJan = vJan.map(x => Number(x.valor) || 0);
 
         if (chart) {
           chart.data.labels = labels;
-          chart.data.datasets[0].data = tvals;
-          chart.data.datasets[1].data = uvals;
-          chart.data.datasets[2].data = vvals;
+          chart.data.datasets[0].data = tvalsJan;
+          chart.data.datasets[1].data = uvalsJan;
+          chart.data.datasets[2].data = vvalsJan;
 
           (chart.options.scales!.y as any).suggestedMax =
             Math.max(
-              Math.ceil((Math.max(...tvals, 0) + 5) / 5) * 5,
-              Math.ceil((Math.max(...uvals, 0) + 5) / 5) * 5,
-              Math.ceil((Math.max(...vvals, 0) + 1) / 1) * 1,
+              Math.ceil((Math.max(...tvalsJan, 0) + 5) / 5) * 5,
+              Math.ceil((Math.max(...uvalsJan, 0) + 5) / 5) * 5,
+              Math.ceil((Math.max(...vvalsJan, 0) + 1) / 1) * 1,
               10
             );
           chart.update();
         }
+
+        // KPIs e alerta sempre baseados em 24h (como no dashboard)
+        const tvals = t24.map(x => Number(x.valor) || 0);
+        const uvals = u24.map(x => Number(x.valor) || 0);
+        const vvals = v24.map(x => Number(x.valor) || 0);
 
         const currT = tvals.length ? tvals[tvals.length - 1] : NaN;
         const currU = uvals.length ? uvals[uvals.length - 1] : NaN;
@@ -274,6 +287,7 @@ export function MotorDetail(motorId: number) {
 
         setAlertVisual(status, detalhe);
 
+        // Histórico de alertas
         let alertas: any[] = [];
         try {
           alertas = await api.alertas(20);
