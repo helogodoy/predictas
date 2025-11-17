@@ -17,7 +17,6 @@ function wireSidebar() {
   window.addEventListener("keydown", (e) => { if (e.key === "Escape") close(); });
 }
 
-// === Mesmo esquema do dashboard.ts ===
 function toBrasiliaTime(ts: string | number | Date): Date {
   const d = new Date(ts);
   return new Date(d.getTime() - 3 * 60 * 60 * 1000);
@@ -40,12 +39,13 @@ export function Leituras() {
                   <th>ID</th>
                   <th>${t("motores")}</th>
                   <th>${t("temperatura")}</th>
+                  <th>Umidade</th>
                   <th>${t("vibracao")}</th>
                   <th>${t("data_hora")}</th>
                 </tr>
               </thead>
               <tbody id="tb-leituras">
-                <tr><td colspan="5">${t("carregando")}...</td></tr>
+                <tr><td colspan="6">${t("carregando")}...</td></tr>
               </tbody>
             </table>
           </div>
@@ -59,24 +59,27 @@ export function Leituras() {
 
     async function load() {
       try {
-        // 1) Lista de motores
         const motores: any[] = await api.motores().catch(() => []);
 
-        // 2) Para cada motor, buscar séries (1h) e pegar o último valor de cada
         const linhas = await Promise.all(
           motores.map(async (m: any) => {
-            const tSerie: any[] = await api.temperaturaSerie(m.id, "1h").catch(() => []);
-            const vSerie: any[] = await api.vibracaoSerie(m.id, "1h").catch(() => []);
+            const [tSerie, uSerie, vSerie]: any[] = await Promise.all([
+              api.temperaturaSerie(m.id, "1h").catch(() => []),
+              api.umidadeSerie(m.id, "1h").catch(() => []),
+              api.vibracaoSerie(m.id, "1h").catch(() => []),
+            ]);
 
             const lastT = tSerie.length ? tSerie[tSerie.length - 1] : null;
+            const lastU = uSerie.length ? uSerie[uSerie.length - 1] : null;
             const lastV = vSerie.length ? vSerie[vSerie.length - 1] : null;
 
             const temp = lastT ? Number(lastT.valor) : null;
-            const vib  = lastV ? Number(lastV.valor)  : null;
+            const umi  = lastU ? Number(lastU.valor) : null;
+            const vib  = lastV ? Number(lastV.valor) : null;
 
-            // timestamp preferencial: o mais recente entre T e V
             const lastTsMs = Math.max(
               lastT ? new Date(lastT.ts).getTime() : 0,
+              lastU ? new Date(lastU.ts).getTime() : 0,
               lastV ? new Date(lastV.ts).getTime() : 0
             );
             const when = lastTsMs
@@ -93,15 +96,16 @@ export function Leituras() {
                 <td>${m.id}</td>
                 <td>${m.nome ?? `Motor ${m.id}`}</td>
                 <td>${temp != null ? `${temp.toFixed(1)} °C` : "-"}</td>
+                <td>${umi  != null ? `${umi.toFixed(1)} %` : "-"}</td>
                 <td>${vib  != null ? `${vib.toFixed(2)}`     : "-"}</td>
                 <td>${when}</td>
               </tr>`;
           })
         );
 
-        $("tb-leituras").innerHTML = linhas.join("") || `<tr><td colspan="5">${t("sem_dados") ?? "Sem dados"}</td></tr>`;
+        $("tb-leituras").innerHTML = linhas.join("") || `<tr><td colspan="6">${t("sem_dados") ?? "Sem dados"}</td></tr>`;
       } catch (e) {
-        $("tb-leituras").innerHTML = `<tr><td colspan="5">${t("erro_carregar") ?? "Erro ao carregar"}</td></tr>`;
+        $("tb-leituras").innerHTML = `<tr><td colspan="6">${t("erro_carregar") ?? "Erro ao carregar"}</td></tr>`;
         console.warn("Falha ao carregar leituras:", e);
       }
     }
