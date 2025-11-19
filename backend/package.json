@@ -2,18 +2,18 @@
   "name": "backend",
   "version": "1.0.0",
   "type": "module",
-  "scripts": {
-    "dev": "tsx watch src/server.ts",
-    "start": "node dist/server.js",
-    "build": "tsc -p tsconfig.json",
-    "db:init": "node ./scripts/run-sql.js ./database/predictas.sql",
-    "db:trigger": "node ./scripts/run-sql.js ./database/add-trigger.sql",
-    "db:user": "node ./scripts/run-sql.js ./database/add-usuarios.sql",
-    "db:seed": "node ./scripts/run-sql.js ./database/test-seed.sql",
-    "db:ping": "node ./scripts/ping-db.js",
-    "whoami": "node ./scripts/whoami-db.js",
-    "setpass": "node ./scripts/set-password.js"
-  },
+ "scripts": {
+  "dev": "tsx watch src/server.ts",
+  "start": "tsx src/server.ts",
+  "build": "tsc -p tsconfig.json",
+  "db:init": "node ./scripts/run-sql.js ./database/predictas.sql",
+  "db:trigger": "node ./scripts/run-sql.js ./database/add-trigger.sql",
+  "db:user": "node ./scripts/run-sql.js ./database/add-usuarios.sql",
+  "db:seed": "node ./scripts/run-sql.js ./database/test-seed.sql",
+  "db:ping": "node ./scripts/ping-db.js",
+  "whoami": "node ./scripts/whoami-db.js",
+  "setpass": "node ./scripts/set-password.js"
+},
   "dependencies": {
     "bcryptjs": "^3.0.2",
     "cors": "^2.8.5",

@@ -1,15 +1,17 @@
 // src/services/api.ts
 
 // ===== Config de base =====
-// Prioridade: localStorage("predictas_api") > VITE_API_URL > heurística localhost
-const BASE_URL =
-  (typeof window !== "undefined" &&
-    typeof localStorage !== "undefined" &&
-    localStorage.getItem("predictas_api")) ||
-  (import.meta as any)?.env?.VITE_API_URL ||
-  (typeof window !== "undefined"
-    ? window.location.origin.replace(":5173", ":3000")
-    : "http://localhost:3000");
+// Em produção (Tomcat), garantimos que a API aponte para o Node na porta 3000
+const IS_LOCAL =
+  typeof window !== "undefined" &&
+  (window.location.hostname === "localhost" ||
+    window.location.hostname === "127.0.0.1");
+
+const BASE_URL = IS_LOCAL
+  ? "http://localhost:3000"
+  : "http://192.168.1.131:3000";
+
+console.log("[PREDICTAS] BASE_URL =", BASE_URL);
 
 function abs(url: string) {
   return url.startsWith("http")
@@ -56,7 +58,7 @@ async function postJSON<T>(url: string, body: any, token?: string) {
   return res.json() as Promise<T>;
 }
 
-// ===== Formatadores (pt-BR, America/Sao_Paulo) =====
+// ===== Formatadores =====
 const tz = "America/Sao_Paulo";
 export function fmtTime(d: Date | string | number) {
   return new Intl.DateTimeFormat("pt-BR", {
@@ -105,12 +107,11 @@ type AlertaApi = {
 
 export type SerieRow = { ts: string; valor: number };
 
+// ===== API =====
 const api = {
-  // AUTH
   async login(email: string, senha: string): Promise<LoginResponse> {
     const r = await postJSON<LoginResponse>("/api/login", { email, senha });
 
-    // Guarda localmente quando estiver em ambiente de navegador
     if (typeof window !== "undefined" && typeof localStorage !== "undefined") {
       localStorage.setItem("predictas_token", r.token);
       localStorage.setItem(
@@ -122,7 +123,6 @@ const api = {
     return r;
   },
 
-  // KPIs
   async statusGeral(): Promise<StatusGeral> {
     const token =
       (typeof localStorage !== "undefined" &&
@@ -131,19 +131,7 @@ const api = {
     return getJSON<StatusGeral>("/api/status-geral", token);
   },
 
-  // ALERTAS
-  async alertas(limit = 20): Promise<
-    {
-      id: number;
-      motorId: number;
-      tipo: string;
-      valor: number | string;
-      limite: number | string;
-      severidade: "baixa" | "media" | "alta";
-      status: string;
-      criado_em: string;
-    }[]
-  > {
+  async alertas(limit = 20) {
     const token =
       (typeof localStorage !== "undefined" &&
         localStorage.getItem("predictas_token")) ||
@@ -153,7 +141,6 @@ const api = {
       token
     );
     return rows.map((r) => {
-      // tenta extrair valor numérico da mensagem
       let valor: number | string = "-";
       const m = r.mensagem?.match(/([0-9]+(?:\.[0-9]+)?)/);
       if (m) valor = Number(m[1]);
@@ -185,11 +172,7 @@ const api = {
     });
   },
 
-  // SÉRIES POR MÉTRICA — normalizando ordem do tempo ASC
-  async temperaturaSerie(
-    _sensorId: number,
-    _range: "1h" | "7d" | "30d" | "24h" = "1h"
-  ): Promise<SerieRow[]> {
+  async temperaturaSerie() {
     const token =
       (typeof localStorage !== "undefined" &&
         localStorage.getItem("predictas_token")) ||
@@ -204,10 +187,7 @@ const api = {
     }));
   },
 
-  async umidadeSerie(
-    _sensorId: number,
-    _range: "1h" | "7d" | "30d" | "24h" = "1h"
-  ): Promise<SerieRow[]> {
+  async umidadeSerie() {
     const token =
       (typeof localStorage !== "undefined" &&
         localStorage.getItem("predictas_token")) ||
@@ -222,10 +202,7 @@ const api = {
     }));
   },
 
-  async vibracaoSerie(
-    _sensorId: number,
-    _range: "1h" | "7d" | "30d" | "24h" = "1h"
-  ): Promise<SerieRow[]> {
+  async vibracaoSerie() {
     const token =
       (typeof localStorage !== "undefined" &&
         localStorage.getItem("predictas_token")) ||
@@ -240,7 +217,6 @@ const api = {
     }));
   },
 
-  // LISTAS
   async motores(): Promise<any[]> {
     const token =
       (typeof localStorage !== "undefined" &&
