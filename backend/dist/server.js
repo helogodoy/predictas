@@ -5,44 +5,31 @@ import dotenv from "dotenv";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
-import mysql from "mysql2/promise";
 import path from "path";
 import { fileURLToPath } from "url";
+import { db } from "./db.js";
 // ===== ESM-friendly __dirname
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-// ===== .env
+// ===== .env (sempre da pasta backend/.env)
 dotenv.config({ path: path.resolve(__dirname, "../.env") });
 // ===== App base
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
 const JWT_SECRET = process.env.JWT_SECRET || "predictas-secret-fallback";
-// ===== CORS mínimo (ok p/ mesma origem e chamadas diretas)
+// ===== CORS básico (libera mesma origem e chamadas diretas)
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 // ===== Log simples
-app.use((req, _res, next) => { console.log(`${req.method} ${req.path}`); next(); });
-// ===== Pool MySQL
-const pool = mysql.createPool({
-    host: process.env.DB_HOST, // ex.: crossover.proxy.rlwy.net
-    port: Number(process.env.DB_PORT || 3306), // ex.: 17940
-    user: process.env.DB_USER, // ex.: root
-    password: process.env.DB_PASSWORD, // ex.: ********
-    database: process.env.DB_NAME, // ex.: railway
-    waitForConnections: true,
-    connectionLimit: 10,
-    queueLimit: 0,
-    connectTimeout: 10000, // 10s
-    // 🔴 Railway costuma exigir TLS. Em Windows, o CA pode dar atrito:
-    ssl: { rejectUnauthorized: false },
+app.use((req, _res, next) => {
+    console.log(`${req.method} ${req.path}`);
+    next();
 });
-// Teste inicial
+// ===== Teste inicial de conexão
 (async () => {
     try {
-        const conn = await pool.getConnection();
-        const [rows] = await conn.query("SELECT NOW() AS agora");
+        const [rows] = await db.query("SELECT NOW() AS agora");
         console.log("✅ Conectado ao banco —", rows[0].agora);
-        conn.release();
     }
     catch (err) {
         console.error("❌ Falha ao conectar ao banco:", err);
@@ -62,13 +49,29 @@ function auth(req, res, next) {
         return res.status(401).json({ error: "Token inválido/expirado" });
     }
 }
+// ===== Healthchecks
+app.get("/", (_req, res) => {
+    res.json({ ok: true, service: "Predictas API", version: "1.0.0" });
+});
+app.get("/api/healthz", (_req, res) => {
+    res.json({ ok: true, uptime: process.uptime() });
+});
+app.get("/api/healthz/db", async (_req, res) => {
+    try {
+        const [[row]] = await db.query("SELECT 1 AS ok");
+        res.json({ ok: row?.ok === 1 });
+    }
+    catch (e) {
+        res.status(500).json({ ok: false, error: "db" });
+    }
+});
 // ===== Login
 async function handleLogin(req, res) {
     try {
         const { email, senha } = (req.body || {});
         if (!email || !senha)
             return res.status(400).json({ error: "Preencha todos os campos" });
-        const [rows] = await pool.query("SELECT id, email, nome, role, senha_hash FROM usuarios WHERE email = ? LIMIT 1", [email]);
+        const [rows] = await db.query("SELECT id, email, nome, role, senha_hash FROM usuarios WHERE email = ? LIMIT 1", [email]);
         if (!Array.isArray(rows) || rows.length === 0)
             return res.status(401).json({ error: "Usuário não encontrado" });
         const user = rows[0];
@@ -85,22 +88,26 @@ async function handleLogin(req, res) {
 }
 app.post("/api/login", handleLogin);
 app.post("/login", handleLogin); // alias
-// ===== Reset de senha
+// ===== Esqueci / Reset de senha
+function plusMinutes(min) {
+    const d = new Date();
+    d.setMinutes(d.getMinutes() + min);
+    const pad = (n) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
 app.post("/api/forgot", async (req, res) => {
     try {
         const { email } = req.body || {};
         if (!email)
             return res.status(400).json({ error: "Informe o e-mail" });
-        const [rows] = await pool.query("SELECT id, email, nome FROM usuarios WHERE email = ? LIMIT 1", [email]);
-        // Resposta idempotente
+        const [rows] = await db.query("SELECT id, email, nome FROM usuarios WHERE email = ? LIMIT 1", [email]);
         if (!Array.isArray(rows) || rows.length === 0) {
             return res.json({ message: "Se o e-mail estiver cadastrado, enviaremos um link." });
         }
         const user = rows[0];
         const token = crypto.randomBytes(24).toString("hex");
-        const expires = new Date(Date.now() + 30 * 60 * 1000); // +30 min
-        await pool.query("INSERT INTO password_resets (user_id, token, expires_at) VALUES (?,?,?)", [user.id, token, expires]);
-        // Em produção, gere URL do seu IP/host
+        const expires = plusMinutes(30);
+        await db.query("INSERT INTO password_resets (user_id, token, expires_at) VALUES (?,?,?)", [user.id, token, expires]);
         console.log("🔗 Link de reset:", `http://SEU_IP:3000/#/reset?token=${token}`);
         return res.json({ message: "Se o e-mail estiver cadastrado, enviaremos um link." });
     }
@@ -114,7 +121,10 @@ app.post("/api/reset", async (req, res) => {
         const { token, novaSenha } = req.body || {};
         if (!token || !novaSenha)
             return res.status(400).json({ error: "Dados incompletos" });
-        const [rows] = await pool.query(`SELECT pr.id, pr.user_id, pr.expires_at, pr.used_at FROM password_resets pr WHERE pr.token = ? LIMIT 1`, [token]);
+        const [rows] = await db.query(`SELECT pr.id, pr.user_id, pr.expires_at, pr.used_at
+         FROM password_resets pr
+        WHERE pr.token = ?
+        LIMIT 1`, [token]);
         if (!Array.isArray(rows) || rows.length === 0)
             return res.status(400).json({ error: "Token inválido" });
         const pr = rows[0];
@@ -123,8 +133,8 @@ app.post("/api/reset", async (req, res) => {
         if (new Date(pr.expires_at).getTime() < Date.now())
             return res.status(400).json({ error: "Token expirado" });
         const hash = await bcrypt.hash(String(novaSenha), 10);
-        await pool.query("UPDATE usuarios SET senha_hash = ? WHERE id = ?", [hash, pr.user_id]);
-        await pool.query("UPDATE password_resets SET used_at = NOW() WHERE id = ?", [pr.id]);
+        await db.query("UPDATE usuarios SET senha_hash = ? WHERE id = ?", [hash, pr.user_id]);
+        await db.query("UPDATE password_resets SET used_at = NOW() WHERE id = ?", [pr.id]);
         return res.json({ message: "Senha redefinida com sucesso!" });
     }
     catch (e) {
@@ -135,13 +145,16 @@ app.post("/api/reset", async (req, res) => {
 // ===== KPIs
 app.get("/api/status-geral", auth, async (_req, res) => {
     try {
-        const [[kpi]] = await pool.query(`SELECT COUNT(*) AS leituras, AVG(temperatura) AS temperatura_media, AVG(umidade) AS umidade_media, AVG(percent_low) AS percent_low_media
+        const [[kpi]] = await db.query(`SELECT COUNT(*) AS leituras,
+              AVG(temperatura) AS temperatura_media,
+              AVG(umidade) AS umidade_media,
+              AVG(percent_low) AS percent_low_media
          FROM dht11_sw520_leituras`);
         return res.json({
             dispositivos: 1,
             sensores: 2,
             leituras: Number(kpi?.leituras || 0),
-            alertas: Number(kpi?.percent_low_media || 0) > 80 ? 1 : 0,
+            alertas: Number(kpi?.percent_low_media || 0) > 80 ? 1 : 0
         });
     }
     catch (e) {
@@ -149,13 +162,17 @@ app.get("/api/status-geral", auth, async (_req, res) => {
         return res.json({ dispositivos: 0, sensores: 0, leituras: 0, alertas: 0 });
     }
 });
-// ===== Séries
+// ===== Série temporal
 app.get("/api/leituras", auth, async (req, res) => {
     try {
         const limit = Math.min(Number(req.query.limit || 200), 1000);
         const metric = String(req.query.metric || "temperatura").toLowerCase();
-        let col = metric === "umidade" ? "umidade" : metric === "vibracao" ? "percent_low" : "temperatura";
-        const [rows] = await pool.query(`SELECT recebido_em AS momento, ${col} AS valor
+        let col = "temperatura";
+        if (metric === "umidade")
+            col = "umidade";
+        else if (metric === "vibracao")
+            col = "percent_low";
+        const [rows] = await db.query(`SELECT recebido_em AS momento, ${col} AS valor
          FROM dht11_sw520_leituras
         WHERE ${col} IS NOT NULL
         ORDER BY recebido_em DESC
@@ -169,52 +186,30 @@ app.get("/api/leituras", auth, async (req, res) => {
 });
 // ===== Lista de motores (placeholder)
 app.get("/api/motores", auth, async (_req, res) => {
-    return res.json([{ id: 1, nome: "Motor Principal", localizacao: "Linha 1", status: "ativo" }]);
+    return res.json([
+        { id: 1, nome: "Motor Principal", localizacao: "Linha 1", status: "ativo" }
+    ]);
 });
-// ===== Alertas simples
-app.get("/api/alertas", auth, async (req, res) => {
-    try {
-        const limit = Math.min(Number(req.query.limit || 20), 200);
-        const [rows] = await pool.query(`SELECT id AS leitura_id, recebido_em, temperatura, umidade, percent_low
-         FROM dht11_sw520_leituras
-        ORDER BY recebido_em DESC
-        LIMIT ?`, [limit]);
-        const mapped = rows.map((r) => {
-            const temperatura = r["temperatura"];
-            const umidade = r["umidade"];
-            const percent_low = r["percent_low"];
-            let nivel = "normal";
-            if (temperatura != null && temperatura > 95)
-                nivel = "critico";
-            else if (temperatura != null && temperatura > 80)
-                nivel = "alto";
-            if (percent_low != null && percent_low > 90)
-                nivel = "critico";
-            else if (percent_low != null && percent_low > 75 && nivel !== "critico")
-                nivel = "alto";
-            return {
-                id: r["leitura_id"],
-                leitura_id: r["leitura_id"],
-                sensor_id: 1,
-                tipo: "temperatura",
-                nivel,
-                mensagem: `Temp=${temperatura ?? "-"} | Umid=${umidade ?? "-"} | %LOW=${percent_low ?? "-"}`,
-                criado_em: r["recebido_em"],
-            };
-        });
-        return res.json(mapped);
-    }
-    catch (e) {
-        console.error("[/api/alertas] erro:", e);
-        return res.json([]);
-    }
-});
-// ===== Servir FRONT (build do Vite) — usa a SUA pasta backend/dist
-const webroot = path.resolve(__dirname, "../dist"); // <- pelo seu print, index.html está aqui
+// ===== (Opcional) servir front buildado se você copiar o build para ../dist (web)
+// Em runtime, __dirname === backend/dist. Então "../dist" resolve para "backend/dist".
+const webroot = path.resolve(__dirname, "../dist");
 app.use(express.static(webroot));
-// SPA fallback: qualquer rota não-API devolve o index.html
 app.get(/^(?!\/api).*/, (_req, res) => res.sendFile(path.join(webroot, "index.html")));
-// ===== Start — bind em 0.0.0.0 p/ abrir por IP
-app.listen(PORT, "0.0.0.0", () => {
-    console.log(`✅ Predictas ouvindo em http://0.0.0.0:${PORT}  (acesse por http://SEU_IP:${PORT})`);
+// ===== Start — bind em 0.0.0.0 p/ acesso por IP
+const server = app.listen(PORT, "0.0.0.0", () => {
+    console.log(`✅ Predictas API ouvindo em http://0.0.0.0:${PORT}  (acesse por http://SEU_IP:${PORT})`);
 });
+// ===== Graceful shutdown
+function shutdown(signal) {
+    console.log(`\n${signal} recebido. Encerrando...`);
+    server.close(async () => {
+        try {
+            await db.end();
+        }
+        catch { }
+        console.log("HTTP fechado e pool do MySQL encerrado.");
+        process.exit(0);
+    });
+}
+process.on("SIGINT", () => shutdown("SIGINT"));
+process.on("SIGTERM", () => shutdown("SIGTERM"));

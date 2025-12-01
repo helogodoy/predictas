@@ -1,48 +1,39 @@
-import 'dotenv/config';
-import mysql from 'mysql2/promise';
-import path from 'path';
-import fs from 'fs';
+// src/db.ts
+import mysql from "mysql2/promise";
 
-function resolveEnvPath(): string | undefined {
-  const candidates = [
-    path.resolve(process.cwd(), '../backend/.env'),
-    path.resolve(process.cwd(), 'backend/.env'),
-    path.resolve(process.cwd(), '.env'),
-  ];
-  for (const p of candidates) {
-    try {
-      if (fs.existsSync(p)) return p;
-    } catch {
-      // ignore
-    }
-  }
-  return undefined;
+declare global {
+  // evita recriar pool em hot-reload/dev
+  // @ts-ignore
+  var __PREDICTAS_DB__: mysql.Pool | undefined;
 }
 
-const envPath = resolveEnvPath();
-if (envPath) {
-  // load explicitly to honor chosen path precedence
-  const dotenv = await import('dotenv');
-  dotenv.config({ path: envPath });
+function createDbPool() {
+  const pool = mysql.createPool({
+    host: process.env.DB_HOST,
+    port: Number(process.env.DB_PORT || 3306),
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_NAME,
+    waitForConnections: true,
+    connectionLimit: 10,
+    queueLimit: 0,
+    connectTimeout: 10_000,
+    // TLS quase sempre requerido em DB gerenciado (Railway)
+    ssl: { rejectUnauthorized: false },
+    // Node 18+ + mysql2 v3
+    enableKeepAlive: true,
+    keepAliveInitialDelay: 10_000
+  });
+
+  // Ping periódico para não cair por idle timeout
+  setInterval(() => {
+    pool.query("SELECT 1").catch(() => {});
+  }, 55_000);
+
+  return pool;
 }
 
-const {
-  DB_HOST = 'localhost',
-  DB_USER = 'root',
-  DB_PASSWORD = '',
-  DB_DATABASE = 'predictas',
-  TZ = 'Z',
-} = process.env;
+export const db =
+  globalThis.__PREDICTAS_DB__ || (globalThis.__PREDICTAS_DB__ = createDbPool());
 
-export const pool = mysql.createPool({
-  host: DB_HOST,
-  user: DB_USER,
-  password: DB_PASSWORD,
-  database: DB_DATABASE,
-  timezone: TZ,
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0,
-});
-
-export type DBPool = typeof pool;
+export type DB = typeof db;
