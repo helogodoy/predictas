@@ -1,7 +1,8 @@
+// src/pages/dashboard.ts
 import "chart.js/auto";
 import { Topbar } from "../components/topbar";
 import { Sidebar } from "../components/sidebar";
-import api, { poll } from "../services/api";
+import api from "../services/api"; // remover import nomeado poll
 import { t } from "../i18n";
 
 function wireSidebar() {
@@ -18,14 +19,13 @@ function wireSidebar() {
   window.addEventListener("keydown", (e) => { if (e.key === "Escape") close(); });
 }
 
-// Pequeno beep para alertas críticos
 function beep(f = 880, ms = 150) {
   try {
     const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
     const o = ctx.createOscillator();
     const g = ctx.createGain();
     o.connect(g); g.connect(ctx.destination);
-    o.type = "square"; o.frequency.value = f;
+    o.type = "square"; o.frequency.value = f as any;
     g.gain.setValueAtTime(0.001, ctx.currentTime);
     g.gain.exponentialRampToValueAtTime(0.2, ctx.currentTime + 0.02);
     g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + ms / 1000);
@@ -34,15 +34,20 @@ function beep(f = 880, ms = 150) {
 }
 
 let stopFns: Array<() => void> = [];
-
-// util para converter UTC → horário de Brasília
 function toBrasiliaTime(ts: string | number | Date): Date {
   const d = new Date(ts);
   return new Date(d.getTime() - 3 * 60 * 60 * 1000);
 }
+function startPoll(fn: () => void, ms: number) {
+  try {
+    const p = (api as any).poll;
+    if (typeof p === "function") return p(fn, ms);
+  } catch {}
+  const id = window.setInterval(fn, ms);
+  return () => window.clearInterval(id);
+}
 
 export function Dashboard() {
-  // limpa pools anteriores
   stopFns.forEach(f => f());
   stopFns = [];
 
@@ -62,10 +67,7 @@ export function Dashboard() {
     <div class="main-content">
       <div class="container">
 
-        <!-- LINHA 1: Status Geral + Motores (visão de parque) -->
         <div class="grid" style="grid-template-columns:0.9fr 2.1fr; gap:16px; margin-bottom:18px">
-          
-          <!-- STATUS GERAL -->
           <div class="card">
             <div style="font-weight:800">${t("status_geral")}</div>
             <div class="grid" style="grid-template-columns:repeat(3,1fr); gap:8px; margin-top:18px">
@@ -84,7 +86,6 @@ export function Dashboard() {
             </div>
           </div>
 
-          <!-- MOTORES -->
           <div class="card">
             <div style="font-weight:800; margin-bottom:8px">${t("motores")}</div>
             <div class="table-wrap">
@@ -106,17 +107,11 @@ export function Dashboard() {
           </div>
         </div>
 
-        <!-- LINHA 2: Sensores (3 cards, gráficos maiores) -->
-        <!-- Grid responsivo controlado pelo CSS (.grid.kpi) -->
         <div class="grid kpi" style="gap:16px">
-          
-          <!-- TEMPERATURA -->
           <div class="card" style="text-align:center">
             <div style="font-weight:800">Temperatura</div>
             <div id="temp-atual" style="font-size:48px; font-weight:800; margin-top:12px">-- °C</div>
-            <div style="margin-top:4px; font-size:13px; opacity:.9">
-              Faixa ideal: 22–24 °C
-            </div>
+            <div style="margin-top:4px; font-size:13px; opacity:.9">Faixa ideal: 22–24 °C</div>
             <div style="margin-top:6px; opacity:.9; font-size:14px">
               Média 24h: <span id="temp-media" style="font-weight:700">-- °C</span>
               &nbsp;|&nbsp;
@@ -125,13 +120,10 @@ export function Dashboard() {
             <div style="height:260px; margin-top:8px"><canvas id="chartTemp"></canvas></div>
           </div>
 
-          <!-- UMIDADE -->
           <div class="card" style="text-align:center">
             <div style="font-weight:800">Umidade</div>
             <div id="umi-atual" style="font-size:48px; font-weight:800; margin-top:12px">-- %</div>
-            <div style="margin-top:4px; font-size:13px; opacity:.9">
-              Faixa ideal: 40–45 %
-            </div>
+            <div style="margin-top:4px; font-size:13px; opacity:.9">Faixa ideal: 40–45 %</div>
             <div style="margin-top:6px; opacity:.9; font-size:14px">
               Média 24h: <span id="umi-media" style="font-weight:700">-- %</span>
               &nbsp;|&nbsp;
@@ -140,13 +132,10 @@ export function Dashboard() {
             <div style="height:260px; margin-top:8px"><canvas id="chartUmi"></canvas></div>
           </div>
 
-          <!-- VIBRAÇÃO -->
           <div class="card" style="text-align:center">
             <div style="font-weight:800">Vibração</div>
             <div id="vib-atual" style="font-size:48px; font-weight:800; margin-top:12px">--</div>
-            <div style="margin-top:4px; font-size:13px; opacity:.9">
-              Faixa ideal: 5–20 % ativo
-            </div>
+            <div style="margin-top:4px; font-size:13px; opacity:.9">Faixa ideal: 5–20 % ativo</div>
             <div style="margin-top:6px; opacity:.9; font-size:14px">
               Média 24h: <span id="vib-media" style="font-weight:700">--</span>
               &nbsp;|&nbsp;
@@ -164,10 +153,7 @@ export function Dashboard() {
     wireSidebar();
 
     const $ = (id: string) => document.getElementById(id);
-    const setText = (id: string, text: string) => {
-      const el = $(id);
-      if (el) el.textContent = text;
-    };
+    const setText = (id: string, text: string) => { const el = $(id); if (el) el.textContent = text; };
 
     const statusBar = $("statusBar")!;
     let blinkTimer: number | null = null;
@@ -177,10 +163,8 @@ export function Dashboard() {
       let bg = "rgba(50,200,100,.3)";
       let text = "SISTEMA NORMAL";
       if (level === "critico") { bg = "rgba(255,50,50,.85)"; text = "⚠️ ALERTA CRÍTICO DETECTADO ⚠️"; }
-
       (statusBar as HTMLElement).style.background = bg;
       statusBar.textContent = text;
-
       if (blinkTimer) { clearInterval(blinkTimer); blinkTimer = null; (statusBar as HTMLElement).style.opacity = "1"; }
       if (level === "critico") {
         let on = false;
@@ -189,7 +173,6 @@ export function Dashboard() {
           (statusBar as HTMLElement).style.opacity = on ? "1" : "0.45";
         }, 600);
         const now = Date.now();
-        // beep a cada ~2 segundos enquanto estiver em crítico
         if (now - lastBeep > 2000) { beep(900, 160); lastBeep = now; }
       }
     }
@@ -206,160 +189,163 @@ export function Dashboard() {
       maintainAspectRatio: false,
       interaction: { intersect: false, mode: "nearest" as const },
       plugins: { legend: { display: false }, decimation: { enabled: true } },
-      scales: {
-        x: { grid: { display: false } },
-        y: { beginAtZero: true, grid: { color: "rgba(255,255,255,.1)" } }
-      },
+      scales: { x: { grid: { display: false } }, y: { beginAtZero: true, grid: { color: "rgba(255,255,255,.1)" } } },
       elements: { point: { radius: 0 } }
     };
 
-    if (tempCanvas) {
-      // @ts-ignore
-      tempChart = new (window as any).Chart(tempCanvas, {
-        type: "line",
-        data: { labels: [], datasets: [{ label: "Temperatura (°C)", data: [], tension: .35, borderWidth: 2, fill: false }] },
-        options: commonOpts
-      });
-    }
-    if (umiCanvas) {
-      // @ts-ignore
-      umiChart = new (window as any).Chart(umiCanvas, {
-        type: "line",
-        data: { labels: [], datasets: [{ label: "Umidade (%)", data: [], tension: .35, borderWidth: 2, fill: false }] },
-        options: commonOpts
-      });
-    }
-    if (vibCanvas) {
-      // @ts-ignore
-      vibChart = new (window as any).Chart(vibCanvas, {
-        type: "line",
-        data: { labels: [], datasets: [{ label: "Vibração (mm/s)", data: [], tension: .35, borderWidth: 2, fill: false }] },
-        options: commonOpts
-      });
+    if (tempCanvas) tempChart = new (window as any).Chart(tempCanvas, {
+      type: "line",
+      data: { labels: [], datasets: [{ label: "Temperatura (°C)", data: [], tension: .35, borderWidth: 2, fill: false }] },
+      options: commonOpts
+    });
+    if (umiCanvas) umiChart = new (window as any).Chart(umiCanvas, {
+      type: "line",
+      data: { labels: [], datasets: [{ label: "Umidade (%)", data: [], tension: .35, borderWidth: 2, fill: false }] },
+      options: commonOpts
+    });
+    if (vibCanvas) vibChart = new (window as any).Chart(vibCanvas, {
+      type: "line",
+      data: { labels: [], datasets: [{ label: "Vibração (mm/s)", data: [], tension: .35, borderWidth: 2, fill: false }] },
+      options: commonOpts
+    });
+
+    // === STATUS GERAL com cálculo de disponibilidade por batimento de vida ===
+    const ONLINE_MS = 60 * 1000;
+
+    async function loadStatusGeral() {
+      try {
+        const motores = await (api as any).motores().catch(() => []);
+        const now = Date.now();
+        let online = 0, offline = 0;
+        motores.forEach((m: any) => {
+          const tsRef = m.atualizado_em ?? m.ultimo_update ?? m.momento ?? m.ts;
+          const last = tsRef ? new Date(tsRef).getTime() : 0;
+          if (last && (now - last) <= ONLINE_MS) online++; else offline++;
+        });
+
+        // total de alertas (fallback busca direta)
+        let totalAlertas = 0;
+        try {
+          const s = await (api as any).statusGeral?.();
+          totalAlertas = s?.alertas ?? 0;
+          if (!totalAlertas) {
+            const rows = await (api as any).alertas?.(100).catch(() => []);
+            totalAlertas = Array.isArray(rows) ? rows.length : 0;
+          }
+        } catch {}
+
+        setText("k-online", String(online));
+        setText("k-offline", String(offline));
+        setText("k-alerta", String(totalAlertas));
+
+        // Tabela de motores com badge OFFLINE e “Reconhecer”
+        const tb = document.getElementById("tb-motores");
+        if (tb) {
+          tb.innerHTML = motores.map((m: any) => {
+            const tsRef = m.atualizado_em ?? m.ultimo_update ?? m.momento ?? m.ts;
+            const last = tsRef ? new Date(tsRef).getTime() : 0;
+            const isOn = last && (Date.now() - last) <= ONLINE_MS;
+            const st = isOn ? "ONLINE" : "OFFLINE";
+            const statusClass = isOn ? "ok" : "err";
+            const ackKey = `predictas_ack_offline_${m.id}`;
+            const ack = localStorage.getItem(ackKey);
+            const ackBtn = isOn ? "" : `<button class="btn btn-outline" data-ack="${m.id}" style="padding:4px 8px; font-size:12px">OK</button>`;
+            return `<tr>
+              <td>${m.id}</td>
+              <td>${m.nome ?? `Motor ${m.id}`}</td>
+              <td>${m.localizacao || "-"}</td>
+              <td>
+                <span class="badge ${statusClass}">${st}</span>
+                ${!isOn && ack ? '<span class="badge ok" style="margin-left:6px">OK</span>' : ""}
+              </td>
+              <td><a class="link" href="#/motor/${m.id}">${t("abrir") ?? "Abrir"}</a> ${ackBtn}</td>
+            </tr>`;
+          }).join("") || `<tr><td colspan="5">Nenhum dispositivo</td></tr>`;
+
+          // wire ACK
+          document.querySelectorAll("[data-ack]").forEach(btn => {
+            btn.addEventListener("click", (ev) => {
+              const id = (ev.currentTarget as HTMLElement).getAttribute("data-ack");
+              if (id) {
+                localStorage.setItem(`predictas_ack_offline_${id}`, new Date().toISOString());
+                loadStatusGeral(); // refresh
+              }
+            });
+          });
+        }
+      } catch (e) {
+        console.warn("Falha status geral:", e);
+      }
     }
 
-    // STATUS GERAL (mantém KPI numérico)
-    stopFns.push(poll(api.statusGeral, 5000, (s) => {
-      setText("k-online", String(s.dispositivos ?? s.sensores ?? "--"));
-      setText("k-offline", "—");
-      setText("k-alerta", String(s.alertas ?? 0));
-      // o “status visual” final será decidido pelas leituras atuais (ver loadSerie)
-    }));
-
-    // SÉRIES (atual, média e máx 24h) + LÓGICA DE ALERTA
+    // Séries + lógica de alerta visual
     async function loadSerie() {
       const [tserie, userie, vserie] = await Promise.all([
-        api.temperaturaSerie(1, "24h"),
-        api.umidadeSerie(1, "24h"),
-        api.vibracaoSerie(1, "24h"),
+        (api as any).temperaturaSerie(1, "24h"),
+        (api as any).umidadeSerie(1, "24h"),
+        (api as any).vibracaoSerie(1, "24h"),
       ]);
 
-      const labels = tserie.map(x =>
-        new Intl.DateTimeFormat("pt-BR", {
-          hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "America/Sao_Paulo"
-        }).format(toBrasiliaTime(x.ts))
+      const labels = tserie.map((x: any) =>
+        new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "America/Sao_Paulo" })
+          .format(toBrasiliaTime(x.ts))
       );
 
-      const tvals = tserie.map(x => Number(x.valor) || 0);
-      const uvals = userie.map(x => Number(x.valor) || 0);
-      const vvals = vserie.map(x => Number(x.valor) || 0);
+      const tvals = tserie.map((x: any) => Number(x.valor) || 0);
+      const uvals = userie.map((x: any) => Number(x.valor) || 0);
+      const vvals = vserie.map((x: any) => Number(x.valor) || 0);
 
       if (tempChart) {
         tempChart.data.labels = labels;
         tempChart.data.datasets[0].data = tvals;
-        (tempChart.options.scales as any).y.suggestedMax =
-          Math.max(Math.ceil((Math.max(...tvals, 0) + 5) / 5) * 5, 10);
+        (tempChart.options.scales as any).y.suggestedMax = Math.max(Math.ceil((Math.max(...tvals, 0) + 5) / 5) * 5, 10);
         tempChart.update();
       }
       if (umiChart) {
         umiChart.data.labels = labels;
         umiChart.data.datasets[0].data = uvals;
-        (umiChart.options.scales as any).y.suggestedMax =
-          Math.max(Math.ceil((Math.max(...uvals, 0) + 5) / 5) * 5, 10);
+        (umiChart.options.scales as any).y.suggestedMax = Math.max(Math.ceil((Math.max(...uvals, 0) + 5) / 5) * 5, 10);
         umiChart.update();
       }
       if (vibChart) {
         vibChart.data.labels = labels;
         vibChart.data.datasets[0].data = vvals;
-        (vibChart.options.scales as any).y.suggestedMax =
-          Math.max(Math.ceil((Math.max(...vvals, 0) + 1) / 1) * 1, 5);
+        (vibChart.options.scales as any).y.suggestedMax = Math.max(Math.ceil((Math.max(...vvals, 0) + 1) / 1) * 1, 5);
         vibChart.update();
       }
 
-      const mediaT = tvals.length ? tvals.reduce((a, b) => a + b, 0) / tvals.length : 0;
-      const mediaU = uvals.length ? uvals.reduce((a, b) => a + b, 0) / uvals.length : 0;
-      const mediaV = vvals.length ? vvals.reduce((a, b) => a + b, 0) / vvals.length : 0;
-      const maxT = tvals.length ? Math.max(...tvals) : 0;
-      const maxU = uvals.length ? Math.max(...uvals) : 0;
-      const maxV = vvals.length ? Math.max(...vvals) : 0;
+      const currT = tvals.at(-1); const currU = uvals.at(-1); const currV = vvals.at(-1);
 
-      const currT = tvals.length ? tvals[tvals.length - 1] : NaN;
-      const currU = uvals.length ? uvals[uvals.length - 1] : NaN;
-      const currV = vvals.length ? vvals[vvals.length - 1] : NaN;
+      const set = (id: string, val: string) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+      set("temp-atual", Number.isFinite(currT!) ? currT!.toFixed(1) + " °C" : "-- °C");
+      set("umi-atual",  Number.isFinite(currU!) ? currU!.toFixed(1) + " %" : "-- %");
+      set("vib-atual",  Number.isFinite(currV!) ? currV!.toFixed(1)       : "--");
 
-      // Valores atuais em destaque
-      setText("temp-atual", Number.isFinite(currT) ? currT.toFixed(1) + " °C" : "-- °C");
-      setText("umi-atual",  Number.isFinite(currU) ? currU.toFixed(1) + " %" : "-- %");
-      setText("vib-atual",  Number.isFinite(currV) ? currV.toFixed(1)       : "--");
+      const media = (arr: number[]) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
+      set("temp-media", tvals.length ? media(tvals).toFixed(1) + " °C" : "-- °C");
+      set("temp-max",   tvals.length ? Math.max(...tvals).toFixed(1)   + " °C" : "-- °C");
+      set("umi-media",  uvals.length ? media(uvals).toFixed(1) + " %" : "-- %");
+      set("umi-max",    uvals.length ? Math.max(...uvals).toFixed(1)   + " %" : "-- %");
+      set("vib-media",  vvals.length ? media(vvals).toFixed(1)         : "--");
+      set("vib-max",    vvals.length ? Math.max(...vvals).toFixed(1)   : "--");
 
-      // Médias e máximas 24h
-      setText("temp-media", tvals.length ? mediaT.toFixed(1) + " °C" : "-- °C");
-      setText("temp-max",   tvals.length ? maxT.toFixed(1)   + " °C" : "-- °C");
-      setText("umi-media",  uvals.length ? mediaU.toFixed(1) + " %" : "-- %");
-      setText("umi-max",    uvals.length ? maxU.toFixed(1)   + " %" : "-- %");
-      setText("vib-media",  vvals.length ? mediaV.toFixed(1)       : "--");
-      setText("vib-max",    vvals.length ? maxV.toFixed(1)         : "--");
-
-      // ========= LÓGICA DE ALERTA NO SITE (MESMOS LIMITES DO PYCHARM) =========
       const TEMP_MIN = 22.0, TEMP_MAX = 24.0;
       const UMID_MIN = 40.0, UMID_MAX = 45.0;
       const MOV_MIN  = 5.0,  MOV_MAX  = 20.0;
 
-      const foraFaixa = (valor: number, min: number, max: number) =>
-        Number.isFinite(valor) && (valor < min || valor > max);
+      const tempOff = Number.isFinite(currT!) && (currT! < TEMP_MIN || currT! > TEMP_MAX);
+      const umiOff  = Number.isFinite(currU!) && (currU! < UMID_MIN || currU! > UMID_MAX);
+      const vibOff  = Number.isFinite(currV!) && (currV! < MOV_MIN  || currV! > MOV_MAX);
 
-      const tempOff = foraFaixa(currT, TEMP_MIN, TEMP_MAX);
-      const umiOff  = foraFaixa(currU, UMID_MIN, UMID_MAX);
-      const vibOff  = foraFaixa(currV, MOV_MIN, MOV_MAX);
+      const setColor = (id: string, bad: boolean) => { const el = document.getElementById(id) as HTMLElement | null; if (el) el.style.color = bad ? "#ff4d4d" : "#ffffff"; };
+      setColor("temp-atual", tempOff); setColor("umi-atual", umiOff); setColor("vib-atual", vibOff);
 
-      // pinta os números em vermelho quando saem da faixa
-      const tempEl = document.getElementById("temp-atual") as HTMLElement | null;
-      const umiEl  = document.getElementById("umi-atual")  as HTMLElement | null;
-      const vibEl  = document.getElementById("vib-atual")  as HTMLElement | null;
-
-      if (tempEl) tempEl.style.color = tempOff ? "#ff4d4d" : "#ffffff";
-      if (umiEl)  umiEl.style.color  = umiOff  ? "#ff4d4d" : "#ffffff";
-      if (vibEl)  vibEl.style.color  = vibOff  ? "#ff4d4d" : "#ffffff";
-
-      // Se qualquer métrica estiver fora da faixa → alerta crítico no topo
-      if (tempOff || umiOff || vibOff) {
-        updateStatusVisual("critico");
-      } else {
-        updateStatusVisual("normal");
-      }
-      // ========================================================================
+      if (tempOff || umiOff || vibOff) updateStatusVisual("critico"); else updateStatusVisual("normal");
     }
 
-    await loadSerie();
-    stopFns.push(poll(loadSerie, 5000, () => {}));
-
-    // MOTORES
-    const motores = await api.motores().catch(() => []);
-    const tbMotores = document.getElementById("tb-motores");
-    if (tbMotores) {
-      tbMotores.innerHTML =
-        motores.map((m: any) => {
-          const st = String(m.status || "online").toUpperCase();
-          const statusClass = st === "ALERTA" ? "warn" : st === "OFFLINE" ? "err" : "ok";
-          return `<tr>
-            <td>${m.id}</td>
-            <td>${m.nome}</td>
-            <td>${m.localizacao || "-"}</td>
-            <td><span class="badge ${statusClass}">${st}</span></td>
-            <td><a class="link" href="#/motor/${m.id}">${t("abrir") ?? "Abrir"}</a></td>
-          </tr>`;
-        }).join("") || `<tr><td colspan="5">Nenhum dispositivo</td></tr>`;
-    }
+    await Promise.all([loadStatusGeral(), loadSerie()]);
+    stopFns.push(startPoll(loadStatusGeral, 5000));
+    stopFns.push(startPoll(loadSerie, 5000));
   }, 0);
 
   return main;

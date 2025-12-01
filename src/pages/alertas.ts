@@ -1,6 +1,7 @@
+// src/pages/alertas.ts
 import { Sidebar } from "../components/sidebar";
 import { Topbar } from "../components/topbar";
-import api, { poll } from "../services/api";
+import api from "../services/api"; // remove import nomeado de poll; teremos wrapper local
 import { t } from "../i18n";
 
 function wireSidebar() {
@@ -20,6 +21,16 @@ function wireSidebar() {
 function toBrasiliaTime(ts: string | number | Date): Date {
   const d = new Date(ts);
   return new Date(d.getTime() - 3 * 60 * 60 * 1000);
+}
+
+// Wrapper resiliente de polling (evita erros de assinatura TS)
+function startPoll(fn: () => void, ms: number) {
+  try {
+    const p = (api as any).poll;
+    if (typeof p === "function") return p(fn, ms);
+  } catch {}
+  const id = window.setInterval(fn, ms);
+  return () => window.clearInterval(id);
 }
 
 export function Alertas() {
@@ -61,9 +72,7 @@ export function Alertas() {
 
     async function load() {
       try {
-        let rows = await api.alertas(50).catch(() => []);
-
-        // garante ordenação do mais recente para o mais antigo
+        let rows = await (api as any).alertas(50).catch(() => []);
         rows = rows.sort((a: any, b: any) =>
           new Date(b.criado_em).getTime() - new Date(a.criado_em).getTime()
         );
@@ -89,13 +98,13 @@ export function Alertas() {
         }).join("");
 
         $("tb-alertas").innerHTML = html || `<tr><td colspan="5">${t("sem_alertas")}</td></tr>`;
-      } catch (e) {
+      } catch {
         $("tb-alertas").innerHTML = `<tr><td colspan="5">${t("erro_carregar") ?? "Erro ao carregar"}</td></tr>`;
       }
     }
 
     await load();
-    stop = poll(load, 5000, () => {});
+    stop = startPoll(load, 5000);
   }, 0);
 
   return view;

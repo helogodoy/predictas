@@ -1,6 +1,7 @@
+// src/pages/leituras.ts
 import { Sidebar } from "../components/sidebar";
 import { Topbar } from "../components/topbar";
-import api, { poll } from "../services/api";
+import api from "../services/api"; // sem poll nomeado
 import { t } from "../i18n";
 
 function wireSidebar() {
@@ -20,6 +21,14 @@ function wireSidebar() {
 function toBrasiliaTime(ts: string | number | Date): Date {
   const d = new Date(ts);
   return new Date(d.getTime() - 3 * 60 * 60 * 1000);
+}
+function startPoll(fn: () => void, ms: number) {
+  try {
+    const p = (api as any).poll;
+    if (typeof p === "function") return p(fn, ms);
+  } catch {}
+  const id = window.setInterval(fn, ms);
+  return () => window.clearInterval(id);
 }
 
 export function Leituras() {
@@ -59,14 +68,14 @@ export function Leituras() {
 
     async function load() {
       try {
-        const motores: any[] = await api.motores().catch(() => []);
+        const motores: any[] = await (api as any).motores().catch(() => []);
 
         const linhas = await Promise.all(
           motores.map(async (m: any) => {
             const [tSerie, uSerie, vSerie]: any[] = await Promise.all([
-              api.temperaturaSerie(m.id, "1h").catch(() => []),
-              api.umidadeSerie(m.id, "1h").catch(() => []),
-              api.vibracaoSerie(m.id, "1h").catch(() => []),
+              (api as any).temperaturaSerie(m.id, "1h").catch(() => []),
+              (api as any).umidadeSerie(m.id, "1h").catch(() => []),
+              (api as any).vibracaoSerie(m.id, "1h").catch(() => []),
             ]);
 
             const lastT = tSerie.length ? tSerie[tSerie.length - 1] : null;
@@ -111,7 +120,7 @@ export function Leituras() {
     }
 
     await load();
-    stop = poll(load, 5000, () => {});
+    stop = startPoll(load, 5000);
   }, 0);
 
   return view;
