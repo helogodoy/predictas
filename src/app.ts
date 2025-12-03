@@ -1,3 +1,4 @@
+// src/app.ts
 import { Login } from "./pages/login";
 import { Forgot } from "./pages/forgot";
 import { Dashboard } from "./pages/dashboard";
