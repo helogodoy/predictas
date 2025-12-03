@@ -4,7 +4,7 @@ export function Login() {
   const html = `
   <div class="center">
     <div class="login-box">
-      <div class="login-title brand">PREDICTAS</div>
+      <div class="login-title brand">PREDICTASsss</div>
       <form id="loginForm" class="card login-form">
         <div class="field">
           <label class="label" for="login">Login:</label>

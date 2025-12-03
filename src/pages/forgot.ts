@@ -26,7 +26,7 @@ export function Forgot(){
       const email = (document.getElementById("email") as HTMLInputElement).value.trim();
       btn.disabled = true;
       try{
-        await api.forgot(email);
+        await (api as any).forgot(email);
         if (msg) msg.textContent = "Se o e-mail estiver cadastrado, enviaremos um link para redefinir sua senha.";
       }catch(e:any){
         if (msg) msg.textContent = e?.message || "Não foi possível enviar o link.";
