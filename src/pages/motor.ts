@@ -4,6 +4,38 @@ import { Topbar } from "../components/topbar";
 import api from "../services/api";
 import { t } from "../i18n";
 
+/** ===== Util de thresholds globais (persistidos) ===== */
+const TEMP_MIN_KEY = "predictas_temp_min";
+const TEMP_MAX_KEY = "predictas_temp_max";
+
+function getTempLimits(): { min: number; max: number } {
+  const def = { min: 22.0, max: 24.0 }; // default histórico
+  try {
+    const rawMin = localStorage.getItem(TEMP_MIN_KEY);
+    const rawMax = localStorage.getItem(TEMP_MAX_KEY);
+    const min = rawMin !== null ? Number(rawMin) : def.min;
+    const max = rawMax !== null ? Number(rawMax) : def.max;
+    if (!Number.isFinite(min) || !Number.isFinite(max) || min >= max) return def;
+    return { min, max };
+  } catch {
+    return def;
+  }
+}
+
+function setTempLimits(min: number, max: number) {
+  const m = Number(min), x = Number(max);
+  if (!Number.isFinite(m) || !Number.isFinite(x) || m >= x) {
+    throw new Error("Limites inválidos");
+  }
+  localStorage.setItem(TEMP_MIN_KEY, String(m));
+  localStorage.setItem(TEMP_MAX_KEY, String(x));
+  // Broadcast local para outras telas/tabs que eventualmente escutem
+  try {
+    window.dispatchEvent(new CustomEvent("predictas:limits_changed", { detail: { min: m, max: x } }));
+  } catch {}
+}
+
+/** ===== Infra padrão da página ===== */
 function wireSidebar() {
   const sidebar = document.getElementById("sidebar");
   const overlay = document.getElementById("sidebarOverlay");
@@ -61,6 +93,8 @@ export function MotorDetail(motorId: number) {
 
   const title = `Motor ${motorId}`;
 
+  const limits = getTempLimits();
+
   const view = `
     ${Sidebar("motores")}
     ${Topbar(title, company)}
@@ -76,7 +110,7 @@ export function MotorDetail(motorId: number) {
             <div class="card">
               <div>Temperatura</div>
               <div id="k-temp" style="font-size:32px; font-weight:800">-- °C</div>
-              <div id="k-temp-sub" style="opacity:.85">Faixa ideal: 22–24 °C</div>
+              <div id="k-temp-sub" style="opacity:.85">Faixa ideal: ${limits.min.toFixed(1)}–${limits.max.toFixed(1)} °C</div>
             </div>
             <div class="card">
               <div>Umidade</div>
@@ -94,6 +128,27 @@ export function MotorDetail(motorId: number) {
               <div style="opacity:.85">Maior valor das últimas 24h</div>
             </div>
           </div>
+
+          <!-- ===== NOVO: bloco de configuração de limites (Temperatura) ===== -->
+          <div class="card" style="margin-top:14px">
+            <div style="display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap">
+              <div style="font-weight:800; flex: 1 1 220px">Parâmetros de Alerta (Temperatura)</div>
+              <div class="field" style="display:flex; gap:8px; align-items:center">
+                <label class="label" for="inpTempMin" style="min-width:110px">Mín (°C)</label>
+                <input id="inpTempMin" type="number" step="0.1" class="input" style="width:120px" value="${limits.min.toFixed(1)}" />
+              </div>
+              <div class="field" style="display:flex; gap:8px; align-items:center">
+                <label class="label" for="inpTempMax" style="min-width:110px">Máx (°C)</label>
+                <input id="inpTempMax" type="number" step="0.1" class="input" style="width:120px" value="${limits.max.toFixed(1)}" />
+              </div>
+              <div style="display:flex; gap:8px">
+                <button id="btnSalvarLimites" class="btn">Salvar</button>
+                <button id="btnPadraoLimites" class="btn btn-outline">Padrão (22–24)</button>
+              </div>
+            </div>
+            <div id="msgLimites" style="margin-top:8px; font-size:13px; opacity:.9"></div>
+          </div>
+          <!-- ===== FIM bloco de configuração ===== -->
 
           <div class="card" style="margin-top:14px">
             <div class="tabs">
@@ -129,6 +184,42 @@ export function MotorDetail(motorId: number) {
   setTimeout(async () => {
     wireSidebar();
     const $ = (id: string) => document.getElementById(id)!;
+
+    // ===== Handlers do bloco de configuração de limites
+    const $min = $("#inpTempMin") as HTMLInputElement;
+    const $max = $("#inpTempMax") as HTMLInputElement;
+    const $msg = $("#msgLimites") as HTMLElement;
+    const $sub = $("#k-temp-sub") as HTMLElement;
+
+    function refreshFaixaSub() {
+      const mm = getTempLimits();
+      $sub.textContent = `Faixa ideal: ${mm.min.toFixed(1)}–${mm.max.toFixed(1)} °C`;
+    }
+
+    $("#btnSalvarLimites")?.addEventListener("click", () => {
+      try {
+        const min = Number($min.value);
+        const max = Number($max.value);
+        setTempLimits(min, max);
+        refreshFaixaSub();
+        $msg.style.color = "#c8facc";
+        $msg.textContent = "Limites salvos com sucesso. As páginas passarão a usar estes parâmetros.";
+      } catch (e: any) {
+        $msg.style.color = "#ffd4d4";
+        $msg.textContent = "Não foi possível salvar. Verifique se Mín < Máx e se os números são válidos.";
+      }
+    });
+
+    $("#btnPadraoLimites")?.addEventListener("click", () => {
+      try {
+        setTempLimits(22.0, 24.0);
+        ($min as HTMLInputElement).value = "22.0";
+        ($max as HTMLInputElement).value = "24.0";
+        refreshFaixaSub();
+        $msg.style.color = "#c8facc";
+        $msg.textContent = "Limites retornaram ao padrão (22–24 °C).";
+      } catch {}
+    });
 
     try {
       const m = await (api as any).motor(motorId).catch(
@@ -264,7 +355,8 @@ export function MotorDetail(motorId: number) {
         (document.getElementById("k-vib")!).textContent  = Number.isFinite(currV!) ? `${currV!.toFixed(1)}`   : "--";
         (document.getElementById("k-pico")!).textContent = tvals.length ? `${Math.max(...tvals, 0).toFixed(1)} °C` : "-- °C";
 
-        const TEMP_MIN = 22.0, TEMP_MAX = 24.0;
+        // === Limites dinâmicos de temperatura (vindos do localStorage)
+        const { min: TEMP_MIN, max: TEMP_MAX } = getTempLimits();
         const UMID_MIN = 40.0, UMID_MAX = 45.0;
         const MOV_MIN  = 5.0,  MOV_MAX  = 20.0;
 
@@ -289,7 +381,7 @@ export function MotorDetail(motorId: number) {
         }
 
         const problemas: string[] = [];
-        if (tempOff) problemas.push("Temperatura fora da faixa");
+        if (tempOff) problemas.push(`Temperatura fora da faixa (${TEMP_MIN.toFixed(1)}–${TEMP_MAX.toFixed(1)} °C)`);
         if (umiOff)  problemas.push("Umidade fora da faixa");
         if (vibOff)  problemas.push("Vibração fora da faixa");
 
@@ -301,7 +393,7 @@ export function MotorDetail(motorId: number) {
           setAlertVisual("NORMAL");
         }
 
-        // Histórico de alertas (inclui “sensor_offline” se desejar cadastrar no backend futuramente)
+        // Histórico de alertas
         let alertas: any[] = [];
         try {
           alertas = await (api as any).alertas(50);
@@ -351,8 +443,28 @@ export function MotorDetail(motorId: number) {
       load(currentRange);
     });
 
+    // Atualiza subtítulo no primeiro render
+    refreshFaixaSub();
+
     await load("1h");
     stop = startPoll(() => load(currentRange), 5000);
+
+    // Caso outras abas/telas alterem os limites, refletir aqui
+    window.addEventListener("storage", (ev) => {
+      if (ev.key === TEMP_MIN_KEY || ev.key === TEMP_MAX_KEY) {
+        ($min as HTMLInputElement).value = String(getTempLimits().min);
+        ($max as HTMLInputElement).value = String(getTempLimits().max);
+        refreshFaixaSub();
+        load(currentRange);
+      }
+    });
+
+    window.addEventListener("predictas:limits_changed", () => {
+      ($min as HTMLInputElement).value = String(getTempLimits().min);
+      ($max as HTMLInputElement).value = String(getTempLimits().max);
+      refreshFaixaSub();
+      load(currentRange);
+    });
   }, 0);
 
   return view;
